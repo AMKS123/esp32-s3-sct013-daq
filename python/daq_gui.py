@@ -83,7 +83,7 @@ class DaqApp(tk.Tk):
         principal.rowconfigure(1, weight=1)
         corpo.add(principal, weight=5)
 
-        controles = ttk.Notebook(principal)
+        controles = ttk.Notebook(principal, height=118)
         controles.grid(row=0, column=0, sticky="ew", pady=(0, 8))
 
         aquisicao_tab = ttk.Frame(controles, padding=10)
@@ -172,7 +172,7 @@ class DaqApp(tk.Tk):
         log_tab.rowconfigure(0, weight=1)
         controles.add(log_tab, text="Log")
 
-        self.log = tk.Text(log_tab, height=6, state="disabled")
+        self.log = tk.Text(log_tab, height=3, state="disabled")
         self.log.grid(row=0, column=0, sticky="nsew")
 
         versao_tab = ttk.Frame(controles, padding=14)
@@ -184,7 +184,7 @@ class DaqApp(tk.Tk):
         ttk.Label(versao_tab, text=APP_VERSION, style="MetricValue.TLabel").grid(row=1, column=1, sticky="w", pady=2)
         ttk.Label(versao_tab, text="Branch de referencia").grid(row=2, column=0, sticky="w", padx=(0, 12), pady=2)
         ttk.Label(versao_tab, text="v1.1.0", style="MetricValue.TLabel").grid(row=2, column=1, sticky="w", pady=2)
-        ttk.Label(versao_tab, text="Recursos principais").grid(row=3, column=0, sticky="nw", padx=(0, 12), pady=(10, 2))
+        ttk.Label(versao_tab, text="Recursos principais").grid(row=3, column=0, sticky="nw", padx=(0, 12), pady=(6, 2))
         ttk.Label(
             versao_tab,
             justify="left",
@@ -194,7 +194,7 @@ class DaqApp(tk.Tk):
                 "calibracao por corrente RMS de referencia; exportacao CSV da ultima captura; "
                 "interface reorganizada em abas."
             ),
-        ).grid(row=3, column=1, sticky="w", pady=(10, 2))
+        ).grid(row=3, column=1, sticky="w", pady=(6, 2))
 
         grafico_frame = ttk.Frame(principal)
         grafico_frame.rowconfigure(1, weight=1)
