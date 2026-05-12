@@ -175,26 +175,15 @@ class DaqApp(tk.Tk):
         self.log = tk.Text(log_tab, height=3, state="disabled")
         self.log.grid(row=0, column=0, sticky="nsew")
 
-        versao_tab = ttk.Frame(controles, padding=14)
-        versao_tab.columnconfigure(1, weight=1)
+        versao_tab = ttk.Frame(controles, padding=10)
+        versao_tab.columnconfigure(3, weight=1)
         controles.add(versao_tab, text="Versao")
 
-        ttk.Label(versao_tab, text="ESP32-S3 SCT013 DAQ", style="Title.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        ttk.Label(versao_tab, text="ESP32-S3 SCT013 DAQ", style="Title.TLabel").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
         ttk.Label(versao_tab, text="Versao").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=2)
-        ttk.Label(versao_tab, text=APP_VERSION, style="MetricValue.TLabel").grid(row=1, column=1, sticky="w", pady=2)
-        ttk.Label(versao_tab, text="Branch de referencia").grid(row=2, column=0, sticky="w", padx=(0, 12), pady=2)
-        ttk.Label(versao_tab, text="v1.1.0", style="MetricValue.TLabel").grid(row=2, column=1, sticky="w", pady=2)
-        ttk.Label(versao_tab, text="Recursos principais").grid(row=3, column=0, sticky="nw", padx=(0, 12), pady=(6, 2))
-        ttk.Label(
-            versao_tab,
-            justify="left",
-            wraplength=620,
-            text=(
-                "Aquisicao em bloco e continua; visualizacao em tempo, FFT e tempo + FFT; "
-                "calibracao por corrente RMS de referencia; exportacao CSV da ultima captura; "
-                "interface reorganizada em abas."
-            ),
-        ).grid(row=3, column=1, sticky="w", pady=(6, 2))
+        ttk.Label(versao_tab, text=APP_VERSION, style="MetricValue.TLabel").grid(row=1, column=1, sticky="w", padx=(0, 28), pady=2)
+        ttk.Label(versao_tab, text="Branch de referencia").grid(row=1, column=2, sticky="w", padx=(0, 12), pady=2)
+        ttk.Label(versao_tab, text="v1.1.0", style="MetricValue.TLabel").grid(row=1, column=3, sticky="w", pady=2)
 
         grafico_frame = ttk.Frame(principal)
         grafico_frame.rowconfigure(1, weight=1)
