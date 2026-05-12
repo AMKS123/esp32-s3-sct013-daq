@@ -1,5 +1,19 @@
 # ESP32-S3 SCT013 DAQ inicial
 
+Projeto de aquisicao de corrente AC com ESP32-S3, sensor SCT013, interface Python, CSV, calibracao em corrente e FFT.
+
+Para recriar o software do zero em outro computador, leia:
+
+```text
+GUIA_RECRIAR_SOFTWARE.md
+```
+
+Pasta local atual usada durante o desenvolvimento:
+
+```text
+C:\Codex\tcc\esp32_s3_daq
+```
+
 Este pacote tem duas partes:
 
 - `arduino/esp32_s3_sct013_capture/esp32_s3_sct013_capture.ino`: codigo para gravar no ESP32-S3 pela Arduino IDE.
@@ -27,7 +41,7 @@ Este pacote tem duas partes:
 No terminal, entre na pasta do programa:
 
 ```powershell
-cd "C:\Antigravity Files\studio\esp32_s3_daq\python"
+cd "C:\Codex\esp32-s3-sct013-daq\python"
 ```
 
 Instale as bibliotecas:
@@ -103,7 +117,7 @@ Feche o Serial Monitor da Arduino IDE antes de abrir a interface.
 No terminal:
 
 ```powershell
-cd "C:\Antigravity Files\studio\esp32_s3_daq\python"
+cd "C:\Codex\esp32-s3-sct013-daq\python"
 py -m pip install -r requirements.txt
 py daq_gui.py
 ```
@@ -130,14 +144,14 @@ No modo `Continuo`, use `Tempo (s) = 0` para capturar sem limite de tempo ate cl
 No terminal:
 
 ```powershell
-cd "C:\Antigravity Files\studio\esp32_s3_daq\python"
+cd "C:\Codex\esp32-s3-sct013-daq\python"
 .\build_exe.bat
 ```
 
 O executavel sera criado em:
 
 ```text
-C:\Antigravity Files\studio\esp32_s3_daq\python\dist\ESP32_S3_DAQ.exe
+C:\Codex\esp32-s3-sct013-daq\python\dist\ESP32_S3_DAQ.exe
 ```
 
 Se o projeto estiver na pasta do TCC, use o mesmo comando dentro de:
