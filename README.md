@@ -2,6 +2,12 @@
 
 Projeto de aquisicao de corrente AC com ESP32-S3, sensor SCT013, interface Python, CSV, calibracao em corrente e FFT.
 
+Versao atual do software:
+
+```text
+1.1.0
+```
+
 Para recriar o software do zero em outro computador, leia:
 
 ```text
