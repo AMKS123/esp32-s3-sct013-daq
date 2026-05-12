@@ -1,0 +1,22 @@
+﻿# Python
+__pycache__/
+*.pyc
+
+# PyInstaller
+python/build/
+python/dist/
+python/*.spec
+
+# Capturas locais
+python/*.csv
+*.csv
+
+# Ambientes locais
+.venv/
+venv/
+
+# Sistema/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
