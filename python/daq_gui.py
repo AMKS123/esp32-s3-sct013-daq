@@ -19,8 +19,8 @@ class DaqApp(tk.Tk):
         super().__init__()
 
         self.title("ESP32-S3 SCT013 DAQ")
-        self.geometry("1100x720")
-        self.minsize(920, 620)
+        self.geometry("1280x780")
+        self.minsize(1040, 680)
 
         self.eventos: queue.Queue[tuple[str, object]] = queue.Queue()
         self.stop_event = threading.Event()
@@ -47,98 +47,135 @@ class DaqApp(tk.Tk):
         self.fator_a_por_adc = 0.0
         self.status_var = tk.StringVar(value="Pronto")
         self.resumo_var = tk.StringVar(value="Sem captura ainda.")
+        self.metric_amostras_var = tk.StringVar(value="-")
+        self.metric_duracao_var = tk.StringVar(value="-")
+        self.metric_sps_var = tk.StringVar(value="-")
+        self.metric_adc_var = tk.StringVar(value="-")
+        self.metric_offset_var = tk.StringVar(value="-")
+        self.metric_rms_adc_var = tk.StringVar(value="-")
+        self.metric_corrente_var = tk.StringVar(value="-")
+        self.metric_esperadas_var = tk.StringVar(value="-")
+        self.metric_aviso_var = tk.StringVar(value="-")
 
         self._criar_layout()
         self._atualizar_portas()
         self.after(120, self._processar_eventos)
 
     def _criar_layout(self) -> None:
+        style = ttk.Style(self)
+        style.configure("Title.TLabel", font=("Segoe UI", 11, "bold"))
+        style.configure("MetricName.TLabel", foreground="#555555")
+        style.configure("MetricValue.TLabel", font=("Segoe UI", 10, "bold"))
+        style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"))
+
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
-
-        barra = ttk.Frame(self, padding=10)
-        barra.grid(row=0, column=0, sticky="ew")
-        barra.columnconfigure(6, weight=1)
-
-        ttk.Label(barra, text="Porta").grid(row=0, column=0, padx=(0, 6))
-        self.porta_combo = ttk.Combobox(barra, textvariable=self.porta_var, width=12)
-        self.porta_combo.grid(row=0, column=1, padx=(0, 10))
-
-        ttk.Button(barra, text="Atualizar", command=self._atualizar_portas).grid(row=0, column=2, padx=(0, 16))
-
-        ttk.Label(barra, text="Baud").grid(row=0, column=3, padx=(0, 6))
-        ttk.Entry(barra, textvariable=self.baud_var, width=10).grid(row=0, column=4, padx=(0, 16))
-
-        ttk.Label(barra, text="SPS").grid(row=0, column=5, padx=(0, 6))
-        ttk.Entry(barra, textvariable=self.sps_var, width=8).grid(row=0, column=6, padx=(0, 12))
-
-        ttk.Label(barra, text="Tempo (s)").grid(row=0, column=7, padx=(0, 6))
-        ttk.Entry(barra, textvariable=self.tempo_var, width=8).grid(row=0, column=8, padx=(0, 16))
-
-        ttk.Button(barra, text="CSV", command=self._salvar_ultima_captura).grid(row=1, column=0, padx=(0, 6), pady=(8, 0))
-        ttk.Entry(barra, textvariable=self.csv_var).grid(row=1, column=1, columnspan=5, sticky="ew", padx=(0, 16), pady=(8, 0))
-
-        ttk.Label(barra, text="Modo").grid(row=1, column=6, padx=(0, 6), pady=(8, 0))
-        self.modo_combo = ttk.Combobox(barra, textvariable=self.modo_var, width=10, state="readonly", values=["Bloco", "Continuo"])
-        self.modo_combo.grid(row=1, column=7, padx=(0, 12), pady=(8, 0))
-
-        self.iniciar_btn = ttk.Button(barra, text="Iniciar", command=self.iniciar)
-        self.iniciar_btn.grid(row=1, column=8, padx=(0, 8), pady=(8, 0))
-
-        self.parar_btn = ttk.Button(barra, text="Stop", command=self.parar, state="disabled")
-        self.parar_btn.grid(row=1, column=9, pady=(8, 0))
+        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=0)
 
         corpo = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        corpo.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        corpo.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
-        grafico_frame = ttk.Frame(corpo)
-        grafico_frame.rowconfigure(1, weight=1)
-        grafico_frame.columnconfigure(0, weight=1)
-        corpo.add(grafico_frame, weight=4)
+        principal = ttk.Frame(corpo)
+        principal.columnconfigure(0, weight=1)
+        principal.rowconfigure(1, weight=1)
+        corpo.add(principal, weight=5)
 
-        escala_frame = ttk.Frame(grafico_frame, padding=(0, 0, 0, 8))
-        escala_frame.grid(row=0, column=0, sticky="ew")
-        escala_frame.columnconfigure(11, weight=1)
+        controles = ttk.Notebook(principal)
+        controles.grid(row=0, column=0, sticky="ew", pady=(0, 8))
 
-        ttk.Label(escala_frame, text="X min").grid(row=0, column=0, padx=(0, 4))
-        ttk.Entry(escala_frame, textvariable=self.x_min_var, width=8).grid(row=0, column=1, padx=(0, 8))
-        ttk.Label(escala_frame, text="X max").grid(row=0, column=2, padx=(0, 4))
-        ttk.Entry(escala_frame, textvariable=self.x_max_var, width=8).grid(row=0, column=3, padx=(0, 12))
+        aquisicao_tab = ttk.Frame(controles, padding=10)
+        aquisicao_tab.columnconfigure(9, weight=1)
+        controles.add(aquisicao_tab, text="Aquisicao")
 
-        ttk.Label(escala_frame, text="Y min").grid(row=0, column=4, padx=(0, 4))
-        ttk.Entry(escala_frame, textvariable=self.y_min_var, width=8).grid(row=0, column=5, padx=(0, 8))
-        ttk.Label(escala_frame, text="Y max").grid(row=0, column=6, padx=(0, 4))
-        ttk.Entry(escala_frame, textvariable=self.y_max_var, width=8).grid(row=0, column=7, padx=(0, 12))
+        ttk.Label(aquisicao_tab, text="Porta").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self.porta_combo = ttk.Combobox(aquisicao_tab, textvariable=self.porta_var, width=12)
+        self.porta_combo.grid(row=0, column=1, sticky="w", padx=(0, 8))
+        ttk.Button(aquisicao_tab, text="Atualizar", command=self._atualizar_portas).grid(row=0, column=2, padx=(0, 18))
 
-        ttk.Button(escala_frame, text="Aplicar escala", command=self._aplicar_escala).grid(row=0, column=8, padx=(0, 8))
-        ttk.Button(escala_frame, text="Auto", command=self._escala_auto).grid(row=0, column=9)
+        ttk.Label(aquisicao_tab, text="Baud").grid(row=0, column=3, sticky="w", padx=(0, 6))
+        ttk.Entry(aquisicao_tab, textvariable=self.baud_var, width=10).grid(row=0, column=4, padx=(0, 18))
 
-        ttk.Label(escala_frame, text="Grafico").grid(row=0, column=10, padx=(12, 4))
+        ttk.Label(aquisicao_tab, text="SPS").grid(row=0, column=5, sticky="w", padx=(0, 6))
+        ttk.Entry(aquisicao_tab, textvariable=self.sps_var, width=10).grid(row=0, column=6, padx=(0, 18))
+
+        ttk.Label(aquisicao_tab, text="Tempo (s)").grid(row=0, column=7, sticky="w", padx=(0, 6))
+        ttk.Entry(aquisicao_tab, textvariable=self.tempo_var, width=10).grid(row=0, column=8, padx=(0, 18))
+
+        ttk.Label(aquisicao_tab, text="Modo").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=(10, 0))
+        self.modo_combo = ttk.Combobox(aquisicao_tab, textvariable=self.modo_var, width=12, state="readonly", values=["Bloco", "Continuo"])
+        self.modo_combo.grid(row=1, column=1, sticky="w", padx=(0, 18), pady=(10, 0))
+
+        self.iniciar_btn = ttk.Button(aquisicao_tab, text="Iniciar captura", command=self.iniciar, style="Primary.TButton")
+        self.iniciar_btn.grid(row=1, column=2, columnspan=2, sticky="ew", padx=(0, 8), pady=(10, 0))
+
+        self.parar_btn = ttk.Button(aquisicao_tab, text="Stop", command=self.parar, state="disabled")
+        self.parar_btn.grid(row=1, column=4, sticky="ew", padx=(0, 8), pady=(10, 0))
+
+        visual_tab = ttk.Frame(controles, padding=10)
+        visual_tab.columnconfigure(11, weight=1)
+        controles.add(visual_tab, text="Visualizacao")
+
+        ttk.Label(visual_tab, text="Unidade do eixo Y").grid(row=0, column=0, sticky="w", padx=(0, 6))
         self.grafico_combo = ttk.Combobox(
-            escala_frame,
+            visual_tab,
             textvariable=self.grafico_var,
-            width=14,
+            width=16,
             state="readonly",
             values=["ADC bruto", "ADC - offset", "Corrente (A)"],
         )
-        self.grafico_combo.grid(row=0, column=11, padx=(0, 8))
+        self.grafico_combo.grid(row=0, column=1, sticky="w", padx=(0, 18))
         self.grafico_combo.bind("<<ComboboxSelected>>", self._trocar_modo_grafico)
 
-        ttk.Label(escala_frame, text="Visualizacao").grid(row=0, column=12, padx=(12, 4))
+        ttk.Label(visual_tab, text="Tipo").grid(row=0, column=2, sticky="w", padx=(0, 6))
         self.visualizacao_combo = ttk.Combobox(
-            escala_frame,
+            visual_tab,
             textvariable=self.visualizacao_var,
-            width=12,
+            width=14,
             state="readonly",
             values=["Tempo", "FFT", "Tempo + FFT"],
         )
-        self.visualizacao_combo.grid(row=0, column=13, padx=(0, 8))
+        self.visualizacao_combo.grid(row=0, column=3, sticky="w", padx=(0, 18))
         self.visualizacao_combo.bind("<<ComboboxSelected>>", lambda _event: self._atualizar_grafico())
 
-        ttk.Label(escala_frame, text="I ref RMS (A)").grid(row=1, column=0, padx=(0, 4), pady=(8, 0))
-        ttk.Entry(escala_frame, textvariable=self.corrente_ref_var, width=10).grid(row=1, column=1, padx=(0, 8), pady=(8, 0))
-        ttk.Button(escala_frame, text="Calibrar", command=self._calibrar_corrente).grid(row=1, column=2, padx=(0, 8), pady=(8, 0))
-        ttk.Button(escala_frame, text="Limpar calib.", command=self._limpar_calibracao).grid(row=1, column=3, padx=(0, 8), pady=(8, 0))
+        ttk.Label(visual_tab, text="X min").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Entry(visual_tab, textvariable=self.x_min_var, width=10).grid(row=1, column=1, sticky="w", padx=(0, 18), pady=(10, 0))
+        ttk.Label(visual_tab, text="X max").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Entry(visual_tab, textvariable=self.x_max_var, width=10).grid(row=1, column=3, sticky="w", padx=(0, 18), pady=(10, 0))
+        ttk.Label(visual_tab, text="Y min").grid(row=1, column=4, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Entry(visual_tab, textvariable=self.y_min_var, width=10).grid(row=1, column=5, sticky="w", padx=(0, 18), pady=(10, 0))
+        ttk.Label(visual_tab, text="Y max").grid(row=1, column=6, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Entry(visual_tab, textvariable=self.y_max_var, width=10).grid(row=1, column=7, sticky="w", padx=(0, 18), pady=(10, 0))
+        ttk.Button(visual_tab, text="Aplicar escala", command=self._aplicar_escala).grid(row=1, column=8, padx=(0, 8), pady=(10, 0))
+        ttk.Button(visual_tab, text="Auto", command=self._escala_auto).grid(row=1, column=9, pady=(10, 0))
+
+        calibracao_tab = ttk.Frame(controles, padding=10)
+        calibracao_tab.columnconfigure(5, weight=1)
+        controles.add(calibracao_tab, text="Calibracao")
+
+        ttk.Label(calibracao_tab, text="Corrente medida no multimetro (A RMS)").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Entry(calibracao_tab, textvariable=self.corrente_ref_var, width=12).grid(row=0, column=1, sticky="w", padx=(0, 12))
+        ttk.Button(calibracao_tab, text="Calibrar", command=self._calibrar_corrente).grid(row=0, column=2, padx=(0, 8))
+        ttk.Button(calibracao_tab, text="Limpar calibracao", command=self._limpar_calibracao).grid(row=0, column=3, padx=(0, 8))
+
+        export_tab = ttk.Frame(controles, padding=10)
+        export_tab.columnconfigure(1, weight=1)
+        controles.add(export_tab, text="Exportacao")
+
+        ttk.Button(export_tab, text="Salvar ultima captura", command=self._salvar_ultima_captura).grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Entry(export_tab, textvariable=self.csv_var).grid(row=0, column=1, sticky="ew")
+
+        log_tab = ttk.Frame(controles, padding=10)
+        log_tab.columnconfigure(0, weight=1)
+        log_tab.rowconfigure(0, weight=1)
+        controles.add(log_tab, text="Log")
+
+        self.log = tk.Text(log_tab, height=6, state="disabled")
+        self.log.grid(row=0, column=0, sticky="nsew")
+
+        grafico_frame = ttk.Frame(principal)
+        grafico_frame.rowconfigure(1, weight=1)
+        grafico_frame.columnconfigure(0, weight=1)
+        grafico_frame.grid(row=1, column=0, sticky="nsew")
 
         self.fig = Figure(figsize=(7, 4), dpi=100)
         self.ax = self.fig.add_subplot(111)
@@ -158,16 +195,45 @@ class DaqApp(tk.Tk):
         lateral.columnconfigure(0, weight=1)
         corpo.add(lateral, weight=1)
 
-        ttk.Label(lateral, text="Status").grid(row=0, column=0, sticky="w")
-        ttk.Label(lateral, textvariable=self.status_var, wraplength=260).grid(row=1, column=0, sticky="ew", pady=(2, 16))
+        ttk.Label(lateral, text="Status", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(lateral, textvariable=self.status_var, wraplength=270).grid(row=1, column=0, sticky="ew", pady=(4, 16))
 
-        ttk.Label(lateral, text="Resumo").grid(row=2, column=0, sticky="w")
-        ttk.Label(lateral, textvariable=self.resumo_var, justify="left", wraplength=260).grid(row=3, column=0, sticky="ew", pady=(2, 16))
+        resumo_box = ttk.LabelFrame(lateral, text="Resumo da ultima captura", padding=10)
+        resumo_box.grid(row=2, column=0, sticky="ew")
+        resumo_box.columnconfigure(1, weight=1)
 
-        ttk.Label(lateral, text="Log").grid(row=4, column=0, sticky="w")
-        self.log = tk.Text(lateral, height=18, width=34, state="disabled")
-        self.log.grid(row=5, column=0, sticky="nsew", pady=(2, 0))
-        lateral.rowconfigure(5, weight=1)
+        self._criar_linha_metrica(resumo_box, 0, "Amostras", self.metric_amostras_var)
+        self._criar_linha_metrica(resumo_box, 1, "Duracao", self.metric_duracao_var)
+        self._criar_linha_metrica(resumo_box, 2, "SPS real", self.metric_sps_var)
+        self._criar_linha_metrica(resumo_box, 3, "ADC min/max", self.metric_adc_var)
+        self._criar_linha_metrica(resumo_box, 4, "Offset", self.metric_offset_var)
+        self._criar_linha_metrica(resumo_box, 5, "RMS ADC", self.metric_rms_adc_var)
+        self._criar_linha_metrica(resumo_box, 6, "Corrente RMS", self.metric_corrente_var)
+        self._criar_linha_metrica(resumo_box, 7, "Esperadas", self.metric_esperadas_var)
+        self._criar_linha_metrica(resumo_box, 8, "Aviso", self.metric_aviso_var)
+
+        dica_box = ttk.LabelFrame(lateral, text="Atalhos", padding=10)
+        dica_box.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        ttk.Label(
+            dica_box,
+            justify="left",
+            wraplength=270,
+            text=(
+                "Use a aba Aquisicao para capturar.\n"
+                "Use Visualizacao para Tempo/FFT e escala.\n"
+                "Use Calibracao para converter ADC em A.\n"
+                "Use Exportacao para salvar a ultima captura."
+            ),
+        ).grid(row=0, column=0, sticky="ew")
+
+        barra_status = ttk.Frame(self, padding=(10, 0, 10, 8))
+        barra_status.grid(row=1, column=0, sticky="ew")
+        barra_status.columnconfigure(0, weight=1)
+        ttk.Label(barra_status, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
+
+    def _criar_linha_metrica(self, parent: ttk.Frame, linha: int, nome: str, valor: tk.StringVar) -> None:
+        ttk.Label(parent, text=nome, style="MetricName.TLabel").grid(row=linha, column=0, sticky="w", pady=2)
+        ttk.Label(parent, textvariable=valor, style="MetricValue.TLabel").grid(row=linha, column=1, sticky="e", pady=2)
 
     def _atualizar_portas(self) -> None:
         portas = [porta.device for porta in list_ports.comports()]
@@ -394,6 +460,18 @@ class DaqApp(tk.Tk):
         self.ax.grid(True)
         self.canvas.draw_idle()
         self.resumo_var.set("Capturando...")
+        self._resetar_metricas("Capturando...")
+
+    def _resetar_metricas(self, corrente: str = "-") -> None:
+        self.metric_amostras_var.set("-")
+        self.metric_duracao_var.set("-")
+        self.metric_sps_var.set("-")
+        self.metric_adc_var.set("-")
+        self.metric_offset_var.set("-")
+        self.metric_rms_adc_var.set("-")
+        self.metric_corrente_var.set(corrente)
+        self.metric_esperadas_var.set("-")
+        self.metric_aviso_var.set("-")
 
     def _atualizar_grafico(self) -> None:
         if not self.amostras:
@@ -590,6 +668,7 @@ class DaqApp(tk.Tk):
     def _atualizar_resumo(self) -> None:
         if not self.amostras:
             self.resumo_var.set("Nenhuma amostra recebida.")
+            self._resetar_metricas()
             return
 
         tempos_us = [item[1] for item in self.amostras]
@@ -602,6 +681,17 @@ class DaqApp(tk.Tk):
         if self.fator_a_por_adc > 0:
             corrente_rms = rms_adc * self.fator_a_por_adc
             corrente_txt = f"\nCorrente RMS: {corrente_rms:.4f} A"
+            self.metric_corrente_var.set(f"{corrente_rms:.4f} A")
+        else:
+            self.metric_corrente_var.set("Nao calibrada")
+
+        self.metric_amostras_var.set(str(len(self.amostras)))
+        self.metric_duracao_var.set(f"{duracao_s:.6f} s")
+        self.metric_sps_var.set(f"{sps:.2f}")
+        self.metric_adc_var.set(f"{min(adc)} / {max(adc)}")
+        self.metric_offset_var.set(f"{offset:.2f}")
+        self.metric_rms_adc_var.set(f"{rms_adc:.2f}")
+        self._atualizar_metricas_perdas(len(self.amostras))
 
         self.resumo_var.set(
             f"Amostras: {len(self.amostras)}\n"
@@ -624,6 +714,21 @@ class DaqApp(tk.Tk):
 
         percentual = faltantes * 100 / self.amostras_esperadas
         return f"\nEsperadas: {self.amostras_esperadas}\nAviso: faltaram {faltantes} ({percentual:.1f}%)"
+
+    def _atualizar_metricas_perdas(self, recebidas: int) -> None:
+        if self.amostras_esperadas is None:
+            self.metric_esperadas_var.set("-")
+            self.metric_aviso_var.set("-")
+            return
+
+        self.metric_esperadas_var.set(str(self.amostras_esperadas))
+        faltantes = self.amostras_esperadas - recebidas
+        if faltantes <= 0:
+            self.metric_aviso_var.set("OK")
+            return
+
+        percentual = faltantes * 100 / self.amostras_esperadas
+        self.metric_aviso_var.set(f"faltaram {faltantes} ({percentual:.1f}%)")
 
 
 if __name__ == "__main__":

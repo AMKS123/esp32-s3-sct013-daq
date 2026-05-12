@@ -124,16 +124,16 @@ py daq_gui.py
 
 Na janela:
 
-1. selecione a porta, por exemplo `COM10`;
-2. informe `SPS`, por exemplo `2000`;
-3. informe `Tempo (s)`, por exemplo `5`;
-4. escolha o modo:
+1. use a aba `Aquisicao`;
+2. selecione a porta, por exemplo `COM10`;
+3. informe `SPS`, por exemplo `2000`;
+4. informe `Tempo (s)`, por exemplo `5`;
+5. escolha o modo:
    - `Bloco`: captura tudo na RAM do ESP32-S3 e envia no final;
    - `Continuo`: captura pequenos pacotes e envia durante a aquisicao;
-5. confirme o arquivo CSV de saida;
 6. clique em `Iniciar`;
-7. aguarde a captura e a transmissao;
-8. veja o grafico e o resumo.
+7. veja o grafico e o resumo;
+8. use a aba `Exportacao` para salvar a ultima captura em CSV.
 
 O botao `Stop` cancela a leitura no computador. No modo `Continuo`, o programa tambem envia `STOP` para o ESP32-S3 parar no proximo pacote. No modo `Bloco`, o ESP32-S3 pode terminar a captura em RAM antes de aceitar outro comando.
 
