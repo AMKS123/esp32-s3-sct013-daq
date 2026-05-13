@@ -1,3 +1,16 @@
+#if 0
+Configuracao Arduino IDE:
+- Board: ESP32S3 Dev Module
+- USB CDC On Boot: Enabled
+- USB Mode: Hardware CDC and JTAG
+- Upload Mode: UART0 / Hardware CDC
+- Flash Size: 16MB (128Mb)
+- PSRAM: OPI PSRAM
+- Upload Speed: 921600
+
+Veja tambem: CONFIGURACAO_ARDUINO_IDE.md
+#endif
+
 #define ADC_PIN 4
 
 #define TAXA_AMOSTRAGEM_PADRAO 2000
