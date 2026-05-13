@@ -336,15 +336,18 @@ class DaqApp(tk.Tk):
     def _capturar_worker(self, porta: str, baud: int, sps: int, tempo_s: int, modo: str) -> None:
         try:
             self.eventos.put(("status", f"Abrindo {porta}..."))
-            self.ser = serial.Serial(porta, baud, timeout=1)
+            self.ser = serial.Serial(porta, baud, timeout=0.5, write_timeout=2)
             self.eventos.put(("status", f"{porta} aberta. Aguardando ESP32-S3..."))
             time.sleep(2)
             self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
 
             comando = f"START,{sps},{tempo_s},{modo}\n"
             self.eventos.put(("status", "Enviando comando START..."))
             self.eventos.put(("log", f"Enviando {comando.strip()} para o ESP32-S3."))
             self.ser.write(comando.encode("ascii"))
+            self.ser.flush()
+            self.eventos.put(("log", "Comando START enviado."))
 
             self.eventos.put(("status", "Aguardando resposta do ESP32-S3..."))
             limite_inicio = time.monotonic() + BEGIN_CAPTURE_TIMEOUT_S
