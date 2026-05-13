@@ -15,7 +15,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.0.2"
 BEGIN_CAPTURE_TIMEOUT_S = 12.0
 CALIBRACAO_ARQUIVO = Path.cwd() / "calibracao_daq.json"
 
@@ -207,7 +207,7 @@ class DaqApp(tk.Tk):
         ttk.Label(versao_tab, text="Versao").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=2)
         ttk.Label(versao_tab, text=APP_VERSION, style="MetricValue.TLabel").grid(row=1, column=1, sticky="w", padx=(0, 28), pady=2)
         ttk.Label(versao_tab, text="Branch de referencia").grid(row=1, column=2, sticky="w", padx=(0, 12), pady=2)
-        ttk.Label(versao_tab, text="v1.1.0", style="MetricValue.TLabel").grid(row=1, column=3, sticky="w", pady=2)
+        ttk.Label(versao_tab, text="v1.0.2", style="MetricValue.TLabel").grid(row=1, column=3, sticky="w", pady=2)
 
         grafico_frame = ttk.Frame(principal)
         grafico_frame.rowconfigure(1, weight=1)

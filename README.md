@@ -5,7 +5,7 @@ Projeto de aquisicao de corrente AC com ESP32-S3, sensor SCT013, interface Pytho
 Versao atual do software:
 
 ```text
-1.1.0
+1.0.2
 ```
 
 Para recriar o software do zero em outro computador, leia:
