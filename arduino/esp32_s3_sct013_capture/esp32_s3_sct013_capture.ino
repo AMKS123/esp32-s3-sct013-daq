@@ -104,15 +104,25 @@ bool prepararBuffers() {
 
 void aguardarComando() {
   Serial.println("ESP32-S3 pronto.");
-  Serial.println("Envie START ou START,SPS,TEMPO_S pela serial para capturar.");
+  Serial.println("Envie START ou START,SPS,TEMPO_S,MODO pela serial para capturar.");
 
   while (true) {
     if (Serial.available()) {
       String comando = Serial.readStringUntil('\n');
+      comando.trim();
+
+      if (comando.length() == 0) {
+        continue;
+      }
+
+      Serial.print("COMANDO_RECEBIDO,");
+      Serial.println(comando);
 
       if (configurarCaptura(comando) && (modo_stream || prepararBuffers())) {
         return;
       }
+
+      Serial.println("Aguardando novo comando.");
     }
 
     delay(10);
@@ -225,9 +235,20 @@ void capturarTransmitindo() {
 
 void setup() {
   Serial.begin(921600);
-  delay(2000);
+  Serial.setTimeout(100);
+
+  uint32_t inicio_espera = millis();
+  while (!Serial && millis() - inicio_espera < 5000) {
+    delay(10);
+  }
+
+  delay(500);
 
   analogReadResolution(12);
+
+  Serial.println();
+  Serial.println("BOOT,ESP32-S3 SCT013 DAQ");
+  Serial.println("BAUD,921600");
 }
 
 void loop() {
