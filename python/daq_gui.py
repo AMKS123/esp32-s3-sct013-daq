@@ -1,4 +1,5 @@
 import csv
+import json
 import math
 import queue
 import threading
@@ -16,6 +17,7 @@ from matplotlib.figure import Figure
 
 APP_VERSION = "1.1.0"
 BEGIN_CAPTURE_TIMEOUT_S = 12.0
+CALIBRACAO_ARQUIVO = Path.cwd() / "calibracao_daq.json"
 
 
 class DaqApp(tk.Tk):
@@ -67,6 +69,7 @@ class DaqApp(tk.Tk):
 
         self._criar_layout()
         self._atualizar_portas()
+        self._carregar_calibracao()
         self.after(120, self._processar_eventos)
 
     def _criar_layout(self) -> None:
@@ -275,6 +278,47 @@ class DaqApp(tk.Tk):
         self.porta_combo["values"] = portas
         if portas and self.porta_var.get() not in portas:
             self.porta_var.set(portas[0])
+
+    def _carregar_calibracao(self) -> None:
+        if not CALIBRACAO_ARQUIVO.exists():
+            return
+
+        try:
+            dados = json.loads(CALIBRACAO_ARQUIVO.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            self._log(f"Nao foi possivel carregar calibracao: {exc}")
+            return
+
+        try:
+            self.fator_a_por_adc = float(dados.get("fator_a_por_adc", 0.0))
+            self.fator_v_por_adc = float(dados.get("fator_v_por_adc", 0.0))
+        except (TypeError, ValueError):
+            self.fator_a_por_adc = 0.0
+            self.fator_v_por_adc = 0.0
+
+        corrente_ref = dados.get("corrente_ref_rms_a")
+        tensao_ref = dados.get("tensao_ref_rms_v")
+        if corrente_ref:
+            self.corrente_ref_var.set(str(corrente_ref))
+        if tensao_ref:
+            self.tensao_ref_var.set(str(tensao_ref))
+
+        self._log(f"Calibracao carregada de {CALIBRACAO_ARQUIVO}")
+
+    def _salvar_calibracao(self) -> None:
+        dados = {
+            "versao": 1,
+            "fator_a_por_adc": self.fator_a_por_adc,
+            "fator_v_por_adc": self.fator_v_por_adc,
+            "corrente_ref_rms_a": self.corrente_ref_var.get().strip(),
+            "tensao_ref_rms_v": self.tensao_ref_var.get().strip(),
+        }
+
+        try:
+            CALIBRACAO_ARQUIVO.write_text(json.dumps(dados, indent=2), encoding="utf-8")
+            self._log(f"Calibracao salva em {CALIBRACAO_ARQUIVO}")
+        except OSError as exc:
+            messagebox.showerror("Erro ao salvar calibracao", str(exc))
 
     def _salvar_ultima_captura(self) -> None:
         if not self.amostras:
@@ -798,6 +842,7 @@ class DaqApp(tk.Tk):
 
         self.fator_a_por_adc = corrente_ref / rms_adc
         self._log(f"Calibrado: 1 contagem RMS ADC = {self.fator_a_por_adc:.8f} A")
+        self._salvar_calibracao()
         self._atualizar_resumo()
         self._atualizar_grafico()
 
@@ -823,18 +868,21 @@ class DaqApp(tk.Tk):
 
         self.fator_v_por_adc = tensao_ref / rms_adc
         self._log(f"Calibrado: 1 contagem RMS ADC = {self.fator_v_por_adc:.8f} V")
+        self._salvar_calibracao()
         self._atualizar_resumo()
         self._atualizar_grafico()
 
     def _limpar_calibracao_corrente(self) -> None:
         self.fator_a_por_adc = 0.0
         self._log("Calibracao de corrente removida.")
+        self._salvar_calibracao()
         self._atualizar_resumo()
         self._atualizar_grafico()
 
     def _limpar_calibracao_tensao(self) -> None:
         self.fator_v_por_adc = 0.0
         self._log("Calibracao de tensao removida.")
+        self._salvar_calibracao()
         self._atualizar_resumo()
         self._atualizar_grafico()
 
