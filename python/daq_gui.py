@@ -49,7 +49,9 @@ class DaqApp(tk.Tk):
         self.canal_var = tk.StringVar(value="Corrente SCT013 (GPIO4)")
         self.visualizacao_var = tk.StringVar(value="Tempo")
         self.corrente_ref_var = tk.StringVar()
+        self.tensao_ref_var = tk.StringVar()
         self.fator_a_por_adc = 0.0
+        self.fator_v_por_adc = 0.0
         self.status_var = tk.StringVar(value="Pronto")
         self.resumo_var = tk.StringVar(value="Sem captura ainda.")
         self.metric_amostras_var = tk.StringVar(value="-")
@@ -59,6 +61,7 @@ class DaqApp(tk.Tk):
         self.metric_offset_var = tk.StringVar(value="-")
         self.metric_rms_adc_var = tk.StringVar(value="-")
         self.metric_corrente_var = tk.StringVar(value="-")
+        self.metric_tensao_var = tk.StringVar(value="-")
         self.metric_esperadas_var = tk.StringVar(value="-")
         self.metric_aviso_var = tk.StringVar(value="-")
 
@@ -137,7 +140,7 @@ class DaqApp(tk.Tk):
             textvariable=self.grafico_var,
             width=16,
             state="readonly",
-            values=["ADC bruto", "ADC - offset", "Corrente (A)"],
+            values=["ADC bruto", "ADC - offset", "Corrente (A)", "Tensao (V)"],
         )
         self.grafico_combo.grid(row=0, column=3, sticky="w", padx=(0, 18))
         self.grafico_combo.bind("<<ComboboxSelected>>", self._trocar_modo_grafico)
@@ -170,8 +173,13 @@ class DaqApp(tk.Tk):
 
         ttk.Label(calibracao_tab, text="Corrente medida no multimetro (A RMS)").grid(row=0, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(calibracao_tab, textvariable=self.corrente_ref_var, width=12).grid(row=0, column=1, sticky="w", padx=(0, 12))
-        ttk.Button(calibracao_tab, text="Calibrar", command=self._calibrar_corrente).grid(row=0, column=2, padx=(0, 8))
-        ttk.Button(calibracao_tab, text="Limpar calibracao", command=self._limpar_calibracao).grid(row=0, column=3, padx=(0, 8))
+        ttk.Button(calibracao_tab, text="Calibrar corrente", command=self._calibrar_corrente).grid(row=0, column=2, padx=(0, 8))
+        ttk.Button(calibracao_tab, text="Limpar corrente", command=self._limpar_calibracao_corrente).grid(row=0, column=3, padx=(0, 8))
+
+        ttk.Label(calibracao_tab, text="Tensao medida no multimetro (V RMS)").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(10, 0))
+        ttk.Entry(calibracao_tab, textvariable=self.tensao_ref_var, width=12).grid(row=1, column=1, sticky="w", padx=(0, 12), pady=(10, 0))
+        ttk.Button(calibracao_tab, text="Calibrar tensao", command=self._calibrar_tensao).grid(row=1, column=2, padx=(0, 8), pady=(10, 0))
+        ttk.Button(calibracao_tab, text="Limpar tensao", command=self._limpar_calibracao_tensao).grid(row=1, column=3, padx=(0, 8), pady=(10, 0))
 
         export_tab = ttk.Frame(controles, padding=10)
         export_tab.columnconfigure(1, weight=1)
@@ -235,8 +243,9 @@ class DaqApp(tk.Tk):
         self._criar_linha_metrica(resumo_box, 4, "Offset", self.metric_offset_var)
         self._criar_linha_metrica(resumo_box, 5, "RMS ADC", self.metric_rms_adc_var)
         self._criar_linha_metrica(resumo_box, 6, "Corrente RMS", self.metric_corrente_var)
-        self._criar_linha_metrica(resumo_box, 7, "Esperadas", self.metric_esperadas_var)
-        self._criar_linha_metrica(resumo_box, 8, "Aviso", self.metric_aviso_var)
+        self._criar_linha_metrica(resumo_box, 7, "Tensao RMS", self.metric_tensao_var)
+        self._criar_linha_metrica(resumo_box, 8, "Esperadas", self.metric_esperadas_var)
+        self._criar_linha_metrica(resumo_box, 9, "Aviso", self.metric_aviso_var)
 
         dica_box = ttk.LabelFrame(lateral, text="Atalhos", padding=10)
         dica_box.grid(row=3, column=0, sticky="ew", pady=(12, 0))
@@ -247,7 +256,7 @@ class DaqApp(tk.Tk):
             text=(
                 "Use a aba Aquisicao para capturar.\n"
                 "Use Visualizacao para Tempo/FFT e escala.\n"
-                "Use Calibracao para converter ADC em A.\n"
+                "Use Calibracao para converter ADC em A e V.\n"
                 "Use Exportacao para salvar a ultima captura."
             ),
         ).grid(row=0, column=0, sticky="ew")
@@ -519,6 +528,7 @@ class DaqApp(tk.Tk):
         self.metric_offset_var.set("-")
         self.metric_rms_adc_var.set("-")
         self.metric_corrente_var.set(corrente)
+        self.metric_tensao_var.set("-")
         self.metric_esperadas_var.set("-")
         self.metric_aviso_var.set("-")
 
@@ -535,6 +545,9 @@ class DaqApp(tk.Tk):
 
     def _canal_corrente_selecionado(self) -> bool:
         return self.canal_var.get().startswith("Corrente")
+
+    def _canal_tensao_selecionado(self) -> bool:
+        return self.canal_var.get().startswith("Tensao")
 
     def _atualizar_grafico(self) -> None:
         if not self.amostras:
@@ -603,6 +616,12 @@ class DaqApp(tk.Tk):
         else:
             corrente_label = "Corrente ADC - offset"
 
+        if self.fator_v_por_adc > 0:
+            tensao_sinal = [valor * self.fator_v_por_adc for valor in tensao_sinal]
+            tensao_label = "Tensao instantanea estimada (V)"
+        else:
+            tensao_label = "Tensao ADC - offset"
+
         self.ax = ax_corrente
         self._plotar_com_lacunas(indices, tempos, corrente_sinal)
         ax_corrente.set_title("Corrente SCT013")
@@ -613,7 +632,7 @@ class DaqApp(tk.Tk):
         self._plotar_com_lacunas(indices, tempos, tensao_sinal)
         ax_tensao.set_title("Tensao ZMPT101B")
         ax_tensao.set_xlabel("Tempo (s)")
-        ax_tensao.set_ylabel("Tensao ADC - offset")
+        ax_tensao.set_ylabel(tensao_label)
         ax_tensao.grid(True)
 
         try:
@@ -662,6 +681,8 @@ class DaqApp(tk.Tk):
     def _rotulo_fft_y(self) -> str:
         if self.grafico_var.get() == "Corrente (A)" and self._canal_corrente_selecionado() and self.fator_a_por_adc > 0:
             return "Magnitude (A)"
+        if self.grafico_var.get() == "Tensao (V)" and self._canal_tensao_selecionado() and self.fator_v_por_adc > 0:
+            return "Magnitude (V)"
         return "Magnitude (contagens ADC)"
 
     def _converter_sinal_para_modo(self, adc: list[int], sinal_adc: list[float]) -> list[float]:
@@ -669,6 +690,8 @@ class DaqApp(tk.Tk):
             return [float(valor) for valor in adc]
         if self.grafico_var.get() == "Corrente (A)" and self._canal_corrente_selecionado() and self.fator_a_por_adc > 0:
             return [valor * self.fator_a_por_adc for valor in sinal_adc]
+        if self.grafico_var.get() == "Tensao (V)" and self._canal_tensao_selecionado() and self.fator_v_por_adc > 0:
+            return [valor * self.fator_v_por_adc for valor in sinal_adc]
         return sinal_adc
 
     def _rotulo_eixo_y(self) -> str:
@@ -679,6 +702,10 @@ class DaqApp(tk.Tk):
             return "Corrente instantanea estimada (A)"
         if self.grafico_var.get() == "Corrente (A)" and self._canal_corrente_selecionado():
             return "Corrente (A) - calibre primeiro"
+        if self.grafico_var.get() == "Tensao (V)" and self._canal_tensao_selecionado() and self.fator_v_por_adc > 0:
+            return "Tensao instantanea estimada (V)"
+        if self.grafico_var.get() == "Tensao (V)" and self._canal_tensao_selecionado():
+            return "Tensao (V) - calibre primeiro"
         return f"ADC - offset ({canal})"
 
     def _plotar_com_lacunas(self, indices: list[int], tempos: list[float], sinal: list[float]) -> None:
@@ -737,6 +764,10 @@ class DaqApp(tk.Tk):
             self._log("Grafico em A usa a calibracao do SCT013. Para tensao, exibindo ADC - offset.")
         elif self.grafico_var.get() == "Corrente (A)" and self.fator_a_por_adc <= 0:
             self._log("Grafico de corrente selecionado, mas ainda nao ha calibracao.")
+        if self.grafico_var.get() == "Tensao (V)" and not self._canal_tensao_selecionado():
+            self._log("Grafico em V usa a calibracao do ZMPT101B. Para corrente, exibindo ADC - offset.")
+        elif self.grafico_var.get() == "Tensao (V)" and self.fator_v_por_adc <= 0:
+            self._log("Grafico de tensao selecionado, mas ainda nao ha calibracao.")
         self._atualizar_grafico()
 
     def _trocar_canal(self, _event: object | None = None) -> None:
@@ -760,7 +791,7 @@ class DaqApp(tk.Tk):
             messagebox.showerror("Corrente invalida", "A corrente de referencia precisa ser maior que zero.")
             return
 
-        rms_adc = self._calcular_rms_adc()
+        rms_adc = self._calcular_rms_corrente_adc()
         if rms_adc <= 0:
             messagebox.showerror("Sinal invalido", "RMS ADC ficou zero; nao e possivel calibrar.")
             return
@@ -770,17 +801,53 @@ class DaqApp(tk.Tk):
         self._atualizar_resumo()
         self._atualizar_grafico()
 
-    def _limpar_calibracao(self) -> None:
+    def _calibrar_tensao(self) -> None:
+        if not self.amostras:
+            messagebox.showerror("Sem captura", "Faca uma captura antes de calibrar.")
+            return
+
+        try:
+            tensao_ref = float(self.tensao_ref_var.get().replace(",", "."))
+        except ValueError:
+            messagebox.showerror("Tensao invalida", "Informe a tensao RMS de referencia em volts.")
+            return
+
+        if tensao_ref <= 0:
+            messagebox.showerror("Tensao invalida", "A tensao de referencia precisa ser maior que zero.")
+            return
+
+        rms_adc = self._calcular_rms_tensao_adc()
+        if rms_adc <= 0:
+            messagebox.showerror("Sinal invalido", "RMS ADC da tensao ficou zero; nao e possivel calibrar.")
+            return
+
+        self.fator_v_por_adc = tensao_ref / rms_adc
+        self._log(f"Calibrado: 1 contagem RMS ADC = {self.fator_v_por_adc:.8f} V")
+        self._atualizar_resumo()
+        self._atualizar_grafico()
+
+    def _limpar_calibracao_corrente(self) -> None:
         self.fator_a_por_adc = 0.0
         self._log("Calibracao de corrente removida.")
         self._atualizar_resumo()
         self._atualizar_grafico()
 
-    def _calcular_rms_adc(self) -> float:
-        adc = [self._adc_corrente(item) for item in self.amostras]
+    def _limpar_calibracao_tensao(self) -> None:
+        self.fator_v_por_adc = 0.0
+        self._log("Calibracao de tensao removida.")
+        self._atualizar_resumo()
+        self._atualizar_grafico()
+
+    def _calcular_rms_adc_lista(self, adc: list[int]) -> float:
         offset = sum(adc) / len(adc)
         sinal = [x - offset for x in adc]
         return math.sqrt(sum(x * x for x in sinal) / len(sinal))
+
+    def _calcular_rms_corrente_adc(self) -> float:
+        return self._calcular_rms_adc_lista([self._adc_corrente(item) for item in self.amostras])
+
+    def _calcular_rms_tensao_adc(self) -> float:
+        return self._calcular_rms_adc_lista([self._adc_tensao(item) for item in self.amostras])
 
     def _atualizar_resumo(self) -> None:
         if not self.amostras:
@@ -793,7 +860,8 @@ class DaqApp(tk.Tk):
         offset = sum(adc) / len(adc)
         sinal_adc = [x - offset for x in adc]
         rms_adc = math.sqrt(sum(x * x for x in sinal_adc) / len(sinal_adc))
-        rms_corrente_adc = self._calcular_rms_adc()
+        rms_corrente_adc = self._calcular_rms_corrente_adc()
+        rms_tensao_adc = self._calcular_rms_tensao_adc()
         duracao_s = (tempos_us[-1] - tempos_us[0]) / 1_000_000
         sps = (len(self.amostras) - 1) / duracao_s if duracao_s > 0 else 0
         corrente_txt = ""
@@ -803,6 +871,14 @@ class DaqApp(tk.Tk):
             self.metric_corrente_var.set(f"{corrente_rms:.4f} A")
         else:
             self.metric_corrente_var.set("Nao calibrada")
+
+        tensao_txt = ""
+        if self.fator_v_por_adc > 0:
+            tensao_rms = rms_tensao_adc * self.fator_v_por_adc
+            tensao_txt = f"\nTensao RMS: {tensao_rms:.2f} V"
+            self.metric_tensao_var.set(f"{tensao_rms:.2f} V")
+        else:
+            self.metric_tensao_var.set("Nao calibrada")
 
         self.metric_amostras_var.set(str(len(self.amostras)))
         self.metric_duracao_var.set(f"{duracao_s:.6f} s")
@@ -820,6 +896,7 @@ class DaqApp(tk.Tk):
             f"Offset medio: {offset:.2f}\n"
             f"RMS ADC: {rms_adc:.2f}"
             f"{corrente_txt}"
+            f"{tensao_txt}"
             + self._resumo_perdas(len(self.amostras))
         )
 
