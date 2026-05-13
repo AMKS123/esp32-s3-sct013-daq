@@ -25,6 +25,13 @@ As opcoes mais importantes para este projeto sao:
 - Baud: `921600`
 - Final de linha: `Nova linha`
 
+## Entradas analogicas
+
+| Sinal | Modulo | GPIO | ADC |
+| --- | --- | --- | --- |
+| Corrente | SCT013 | `GPIO4` | `ADC1_CH3` |
+| Tensao | ZMPT101B | `GPIO5` | `ADC1_CH4` |
+
 Depois de abrir o Monitor Serial, aperte `RESET/EN` no ESP32-S3. A saida esperada e:
 
 ```text

@@ -18,7 +18,7 @@ def ler_linha(ser: serial.Serial) -> str:
     return ser.readline().decode("utf-8", errors="ignore").strip()
 
 
-def capturar(ser: serial.Serial, arquivo_csv: Path, sps: int, tempo_s: int) -> list[tuple[int, int, int]]:
+def capturar(ser: serial.Serial, arquivo_csv: Path, sps: int, tempo_s: int) -> list[tuple[int, ...]]:
     comando = f"START,{sps},{tempo_s}\n"
     print(f"Enviando {comando.strip()} para o ESP32-S3...")
     ser.write(comando.encode("ascii"))
@@ -53,17 +53,18 @@ def capturar(ser: serial.Serial, arquivo_csv: Path, sps: int, tempo_s: int) -> l
                 metadados[partes[0]] = partes[1]
                 continue
 
-            if linha == "indice,tempo_us,adc":
+            if linha in ("indice,tempo_us,adc", "indice,tempo_us,adc_corrente,adc_tensao"):
                 cabecalho_encontrado = True
-                writer.writerow(["indice", "tempo_us", "adc"])
+                writer.writerow(["indice", "tempo_us", "adc_corrente", "adc_tensao"])
                 continue
 
-            if cabecalho_encontrado and len(partes) == 3:
+            if cabecalho_encontrado and len(partes) in (3, 4):
                 indice = int(partes[0])
                 tempo_us = int(partes[1])
-                adc = int(partes[2])
-                amostras.append((indice, tempo_us, adc))
-                writer.writerow([indice, tempo_us, adc])
+                adc_corrente = int(partes[2])
+                adc_tensao = int(partes[3]) if len(partes) == 4 else adc_corrente
+                amostras.append((indice, tempo_us, adc_corrente, adc_tensao))
+                writer.writerow([indice, tempo_us, adc_corrente, adc_tensao])
 
     print(f"CSV salvo em: {arquivo_csv}")
     if metadados:
@@ -72,17 +73,21 @@ def capturar(ser: serial.Serial, arquivo_csv: Path, sps: int, tempo_s: int) -> l
     return amostras
 
 
-def analisar(amostras: list[tuple[int, int, int]]) -> None:
+def analisar(amostras: list[tuple[int, ...]]) -> None:
     if not amostras:
         print("Nenhuma amostra recebida.")
         return
 
     tempos_us = [item[1] for item in amostras]
     adc = [item[2] for item in amostras]
+    adc_tensao = [item[3] if len(item) > 3 else item[2] for item in amostras]
 
     offset = sum(adc) / len(adc)
     sinal = [x - offset for x in adc]
     rms_adc = math.sqrt(sum(x * x for x in sinal) / len(sinal))
+    offset_tensao = sum(adc_tensao) / len(adc_tensao)
+    sinal_tensao = [x - offset_tensao for x in adc_tensao]
+    rms_tensao_adc = math.sqrt(sum(x * x for x in sinal_tensao) / len(sinal_tensao))
 
     duracao_s = (tempos_us[-1] - tempos_us[0]) / 1_000_000
     sps_real = (len(amostras) - 1) / duracao_s if duracao_s > 0 else 0
@@ -98,6 +103,9 @@ def analisar(amostras: list[tuple[int, int, int]]) -> None:
     print(f"ADC min/max: {adc_min} / {adc_max}")
     print(f"Offset medio: {offset:.2f}")
     print(f"RMS em contagens ADC: {rms_adc:.2f}")
+    print(f"ADC tensao min/max: {min(adc_tensao)} / {max(adc_tensao)}")
+    print(f"Offset tensao medio: {offset_tensao:.2f}")
+    print(f"RMS tensao em contagens ADC: {rms_tensao_adc:.2f}")
 
     try:
         import numpy as np
@@ -122,7 +130,7 @@ def analisar(amostras: list[tuple[int, int, int]]) -> None:
         print("Instale numpy para calcular FFT: py -m pip install numpy")
 
 
-def plotar(amostras: list[tuple[int, int, int]]) -> None:
+def plotar(amostras: list[tuple[int, ...]]) -> None:
     try:
         import matplotlib.pyplot as plt
     except ImportError:

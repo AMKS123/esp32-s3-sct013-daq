@@ -8,10 +8,15 @@ Configuracao Arduino IDE:
 - PSRAM: OPI PSRAM
 - Upload Speed: 921600
 
+Entradas analogicas:
+- GPIO4: SCT013 corrente (ADC1_CH3)
+- GPIO5: ZMPT101B tensao (ADC1_CH4)
+
 Veja tambem: CONFIGURACAO_ARDUINO_IDE.md
 #endif
 
-#define ADC_PIN 4
+#define ADC_CORRENTE_PIN 4
+#define ADC_TENSAO_PIN 5
 
 #define TAXA_AMOSTRAGEM_PADRAO 2000
 #define TEMPO_CAPTURA_PADRAO 5
@@ -28,7 +33,8 @@ uint32_t num_amostras = TAXA_AMOSTRAGEM_PADRAO * TEMPO_CAPTURA_PADRAO;
 uint32_t intervalo_us = 1000000UL / TAXA_AMOSTRAGEM_PADRAO;
 bool modo_stream = false;
 
-uint16_t *amostras = nullptr;
+uint16_t *amostras_corrente = nullptr;
+uint16_t *amostras_tensao = nullptr;
 uint32_t *tempos = nullptr;
 
 bool configurarCaptura(String comando) {
@@ -95,18 +101,23 @@ bool configurarCaptura(String comando) {
 }
 
 bool prepararBuffers() {
-  free(amostras);
+  free(amostras_corrente);
+  free(amostras_tensao);
   free(tempos);
-  amostras = nullptr;
+  amostras_corrente = nullptr;
+  amostras_tensao = nullptr;
   tempos = nullptr;
 
-  amostras = (uint16_t *)malloc(num_amostras * sizeof(uint16_t));
+  amostras_corrente = (uint16_t *)malloc(num_amostras * sizeof(uint16_t));
+  amostras_tensao = (uint16_t *)malloc(num_amostras * sizeof(uint16_t));
   tempos = (uint32_t *)malloc(num_amostras * sizeof(uint32_t));
 
-  if (amostras == nullptr || tempos == nullptr) {
-    free(amostras);
+  if (amostras_corrente == nullptr || amostras_tensao == nullptr || tempos == nullptr) {
+    free(amostras_corrente);
+    free(amostras_tensao);
     free(tempos);
-    amostras = nullptr;
+    amostras_corrente = nullptr;
+    amostras_tensao = nullptr;
     tempos = nullptr;
     Serial.println("ERROR,Memoria insuficiente");
     return false;
@@ -152,7 +163,8 @@ void capturar() {
 
     uint32_t agora = micros();
     tempos[i] = agora - inicio;
-    amostras[i] = analogRead(ADC_PIN);
+    amostras_corrente[i] = analogRead(ADC_CORRENTE_PIN);
+    amostras_tensao[i] = analogRead(ADC_TENSAO_PIN);
 
     proxima_amostra += intervalo_us;
   }
@@ -167,14 +179,17 @@ void transmitir() {
   Serial.print("SAMPLES,");
   Serial.println(num_amostras);
   Serial.println("MODE,BLOCK");
-  Serial.println("indice,tempo_us,adc");
+  Serial.println("CHANNELS,CURRENT_GPIO4,VOLTAGE_GPIO5");
+  Serial.println("indice,tempo_us,adc_corrente,adc_tensao");
 
   for (uint32_t i = 0; i < num_amostras; i++) {
     Serial.print(i);
     Serial.print(",");
     Serial.print(tempos[i]);
     Serial.print(",");
-    Serial.println(amostras[i]);
+    Serial.print(amostras_corrente[i]);
+    Serial.print(",");
+    Serial.println(amostras_tensao[i]);
   }
 
   Serial.println("END_CAPTURE");
@@ -192,7 +207,8 @@ bool stopSolicitado() {
 }
 
 void capturarTransmitindo() {
-  uint16_t pacote_adc[STREAM_PACOTE_AMOSTRAS];
+  uint16_t pacote_corrente[STREAM_PACOTE_AMOSTRAS];
+  uint16_t pacote_tensao[STREAM_PACOTE_AMOSTRAS];
   uint32_t pacote_tempos[STREAM_PACOTE_AMOSTRAS];
 
   Serial.println("BEGIN_CAPTURE");
@@ -207,7 +223,8 @@ void capturarTransmitindo() {
     Serial.println(num_amostras);
   }
   Serial.println("MODE,STREAM");
-  Serial.println("indice,tempo_us,adc");
+  Serial.println("CHANNELS,CURRENT_GPIO4,VOLTAGE_GPIO5");
+  Serial.println("indice,tempo_us,adc_corrente,adc_tensao");
 
   uint32_t inicio = micros();
   uint32_t indice = 0;
@@ -223,7 +240,8 @@ void capturarTransmitindo() {
 
       uint32_t agora = micros();
       pacote_tempos[j] = agora - inicio;
-      pacote_adc[j] = analogRead(ADC_PIN);
+      pacote_corrente[j] = analogRead(ADC_CORRENTE_PIN);
+      pacote_tensao[j] = analogRead(ADC_TENSAO_PIN);
       proxima_amostra += intervalo_us;
     }
 
@@ -232,7 +250,9 @@ void capturarTransmitindo() {
       Serial.print(",");
       Serial.print(pacote_tempos[j]);
       Serial.print(",");
-      Serial.println(pacote_adc[j]);
+      Serial.print(pacote_corrente[j]);
+      Serial.print(",");
+      Serial.println(pacote_tensao[j]);
     }
 
     if (stopSolicitado()) {
@@ -277,8 +297,10 @@ void loop() {
   Serial.println("TRANSMITINDO");
   transmitir();
 
-  free(amostras);
+  free(amostras_corrente);
+  free(amostras_tensao);
   free(tempos);
-  amostras = nullptr;
+  amostras_corrente = nullptr;
+  amostras_tensao = nullptr;
   tempos = nullptr;
 }

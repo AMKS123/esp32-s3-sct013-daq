@@ -30,7 +30,7 @@ class DaqApp(tk.Tk):
         self.stop_event = threading.Event()
         self.worker: threading.Thread | None = None
         self.ser: serial.Serial | None = None
-        self.amostras: list[tuple[int, int, int]] = []
+        self.amostras: list[tuple[int, ...]] = []
         self.modo_atual = "BLOCK"
         self.sps_atual = 2000
         self.amostras_esperadas: int | None = None
@@ -46,6 +46,7 @@ class DaqApp(tk.Tk):
         self.y_min_var = tk.StringVar()
         self.y_max_var = tk.StringVar()
         self.grafico_var = tk.StringVar(value="ADC - offset")
+        self.canal_var = tk.StringVar(value="Corrente SCT013 (GPIO4)")
         self.visualizacao_var = tk.StringVar(value="Tempo")
         self.corrente_ref_var = tk.StringVar()
         self.fator_a_por_adc = 0.0
@@ -116,10 +117,21 @@ class DaqApp(tk.Tk):
         self.parar_btn.grid(row=1, column=4, sticky="ew", padx=(0, 8), pady=(10, 0))
 
         visual_tab = ttk.Frame(controles, padding=10)
-        visual_tab.columnconfigure(11, weight=1)
+        visual_tab.columnconfigure(13, weight=1)
         controles.add(visual_tab, text="Visualizacao")
 
-        ttk.Label(visual_tab, text="Unidade do eixo Y").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        ttk.Label(visual_tab, text="Canal").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self.canal_combo = ttk.Combobox(
+            visual_tab,
+            textvariable=self.canal_var,
+            width=22,
+            state="readonly",
+            values=["Corrente SCT013 (GPIO4)", "Tensao ZMPT101B (GPIO5)"],
+        )
+        self.canal_combo.grid(row=0, column=1, sticky="w", padx=(0, 18))
+        self.canal_combo.bind("<<ComboboxSelected>>", self._trocar_canal)
+
+        ttk.Label(visual_tab, text="Unidade do eixo Y").grid(row=0, column=2, sticky="w", padx=(0, 6))
         self.grafico_combo = ttk.Combobox(
             visual_tab,
             textvariable=self.grafico_var,
@@ -127,10 +139,10 @@ class DaqApp(tk.Tk):
             state="readonly",
             values=["ADC bruto", "ADC - offset", "Corrente (A)"],
         )
-        self.grafico_combo.grid(row=0, column=1, sticky="w", padx=(0, 18))
+        self.grafico_combo.grid(row=0, column=3, sticky="w", padx=(0, 18))
         self.grafico_combo.bind("<<ComboboxSelected>>", self._trocar_modo_grafico)
 
-        ttk.Label(visual_tab, text="Tipo").grid(row=0, column=2, sticky="w", padx=(0, 6))
+        ttk.Label(visual_tab, text="Tipo").grid(row=0, column=4, sticky="w", padx=(0, 6))
         self.visualizacao_combo = ttk.Combobox(
             visual_tab,
             textvariable=self.visualizacao_var,
@@ -138,7 +150,7 @@ class DaqApp(tk.Tk):
             state="readonly",
             values=["Tempo", "FFT", "Tempo + FFT"],
         )
-        self.visualizacao_combo.grid(row=0, column=3, sticky="w", padx=(0, 18))
+        self.visualizacao_combo.grid(row=0, column=5, sticky="w", padx=(0, 18))
         self.visualizacao_combo.bind("<<ComboboxSelected>>", lambda _event: self._atualizar_grafico())
 
         ttk.Label(visual_tab, text="X min").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=(10, 0))
@@ -276,8 +288,9 @@ class DaqApp(tk.Tk):
         caminho.parent.mkdir(parents=True, exist_ok=True)
         with caminho.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["indice", "tempo_us", "adc"])
-            writer.writerows(self.amostras)
+            writer.writerow(["indice", "tempo_us", "adc_corrente", "adc_tensao"])
+            for item in self.amostras:
+                writer.writerow([item[0], item[1], self._adc_corrente(item), self._adc_tensao(item)])
 
     def iniciar(self) -> None:
         if self.worker and self.worker.is_alive():
@@ -395,14 +408,18 @@ class DaqApp(tk.Tk):
                     self.eventos.put(("metadata", dict(metadados)))
                     continue
 
-                if linha == "indice,tempo_us,adc":
+                if linha in ("indice,tempo_us,adc", "indice,tempo_us,adc_corrente,adc_tensao"):
                     cabecalho = True
                     self.eventos.put(("status", "Recebendo amostras..."))
                     continue
 
-                if cabecalho and len(partes) == 3:
+                if cabecalho and len(partes) in (3, 4):
                     try:
-                        amostra = (int(partes[0]), int(partes[1]), int(partes[2]))
+                        indice = int(partes[0])
+                        tempo_us = int(partes[1])
+                        adc_corrente = int(partes[2])
+                        adc_tensao = int(partes[3]) if len(partes) == 4 else adc_corrente
+                        amostra = (indice, tempo_us, adc_corrente, adc_tensao)
                     except ValueError:
                         continue
 
@@ -505,6 +522,20 @@ class DaqApp(tk.Tk):
         self.metric_esperadas_var.set("-")
         self.metric_aviso_var.set("-")
 
+    def _adc_corrente(self, item: tuple[int, ...]) -> int:
+        return item[2]
+
+    def _adc_tensao(self, item: tuple[int, ...]) -> int:
+        return item[3] if len(item) > 3 else item[2]
+
+    def _adc_selecionado(self, item: tuple[int, ...]) -> int:
+        if self.canal_var.get().startswith("Tensao"):
+            return self._adc_tensao(item)
+        return self._adc_corrente(item)
+
+    def _canal_corrente_selecionado(self) -> bool:
+        return self.canal_var.get().startswith("Corrente")
+
     def _atualizar_grafico(self) -> None:
         if not self.amostras:
             return
@@ -515,8 +546,8 @@ class DaqApp(tk.Tk):
             pontos = self.amostras
         tempos = [item[1] / 1_000_000 for item in pontos]
         indices = [item[0] for item in pontos]
-        adc = [item[2] for item in pontos]
-        offset = sum(item[2] for item in self.amostras) / len(self.amostras)
+        adc = [self._adc_selecionado(item) for item in pontos]
+        offset = sum(self._adc_selecionado(item) for item in self.amostras) / len(self.amostras)
         sinal_adc = [x - offset for x in adc]
         sinal = self._converter_sinal_para_modo(adc, sinal_adc)
 
@@ -564,7 +595,7 @@ class DaqApp(tk.Tk):
         duracao_s = (tempos_us[-1] - tempos_us[0]) / 1_000_000
         sps_real = (len(self.amostras) - 1) / duracao_s if duracao_s > 0 else self.sps_atual
 
-        adc_total = [item[2] for item in self.amostras]
+        adc_total = [self._adc_selecionado(item) for item in self.amostras]
         offset = sum(adc_total) / len(adc_total)
         sinal_adc = [x - offset for x in adc_total]
         sinal = self._converter_sinal_para_modo(adc_total, sinal_adc)
@@ -587,25 +618,26 @@ class DaqApp(tk.Tk):
         ax_fft.grid(True)
 
     def _rotulo_fft_y(self) -> str:
-        if self.grafico_var.get() == "Corrente (A)" and self.fator_a_por_adc > 0:
+        if self.grafico_var.get() == "Corrente (A)" and self._canal_corrente_selecionado() and self.fator_a_por_adc > 0:
             return "Magnitude (A)"
         return "Magnitude (contagens ADC)"
 
     def _converter_sinal_para_modo(self, adc: list[int], sinal_adc: list[float]) -> list[float]:
         if self.grafico_var.get() == "ADC bruto":
             return [float(valor) for valor in adc]
-        if self.grafico_var.get() == "Corrente (A)" and self.fator_a_por_adc > 0:
+        if self.grafico_var.get() == "Corrente (A)" and self._canal_corrente_selecionado() and self.fator_a_por_adc > 0:
             return [valor * self.fator_a_por_adc for valor in sinal_adc]
         return sinal_adc
 
     def _rotulo_eixo_y(self) -> str:
+        canal = "corrente" if self._canal_corrente_selecionado() else "tensao"
         if self.grafico_var.get() == "ADC bruto":
-            return "Valor digital ADC (0 a 4095)"
-        if self.grafico_var.get() == "Corrente (A)" and self.fator_a_por_adc > 0:
+            return f"Valor digital ADC {canal} (0 a 4095)"
+        if self.grafico_var.get() == "Corrente (A)" and self._canal_corrente_selecionado() and self.fator_a_por_adc > 0:
             return "Corrente instantanea estimada (A)"
-        if self.grafico_var.get() == "Corrente (A)":
+        if self.grafico_var.get() == "Corrente (A)" and self._canal_corrente_selecionado():
             return "Corrente (A) - calibre primeiro"
-        return "ADC - offset"
+        return f"ADC - offset ({canal})"
 
     def _plotar_com_lacunas(self, indices: list[int], tempos: list[float], sinal: list[float]) -> None:
         if not indices:
@@ -656,8 +688,16 @@ class DaqApp(tk.Tk):
     def _trocar_modo_grafico(self, _event: object | None = None) -> None:
         self.y_min_var.set("")
         self.y_max_var.set("")
-        if self.grafico_var.get() == "Corrente (A)" and self.fator_a_por_adc <= 0:
+        if self.grafico_var.get() == "Corrente (A)" and not self._canal_corrente_selecionado():
+            self._log("Grafico em A usa a calibracao do SCT013. Para tensao, exibindo ADC - offset.")
+        elif self.grafico_var.get() == "Corrente (A)" and self.fator_a_por_adc <= 0:
             self._log("Grafico de corrente selecionado, mas ainda nao ha calibracao.")
+        self._atualizar_grafico()
+
+    def _trocar_canal(self, _event: object | None = None) -> None:
+        self.y_min_var.set("")
+        self.y_max_var.set("")
+        self._atualizar_resumo()
         self._atualizar_grafico()
 
     def _calibrar_corrente(self) -> None:
@@ -692,7 +732,7 @@ class DaqApp(tk.Tk):
         self._atualizar_grafico()
 
     def _calcular_rms_adc(self) -> float:
-        adc = [item[2] for item in self.amostras]
+        adc = [self._adc_corrente(item) for item in self.amostras]
         offset = sum(adc) / len(adc)
         sinal = [x - offset for x in adc]
         return math.sqrt(sum(x * x for x in sinal) / len(sinal))
@@ -704,14 +744,16 @@ class DaqApp(tk.Tk):
             return
 
         tempos_us = [item[1] for item in self.amostras]
-        adc = [item[2] for item in self.amostras]
+        adc = [self._adc_selecionado(item) for item in self.amostras]
         offset = sum(adc) / len(adc)
-        rms_adc = self._calcular_rms_adc()
+        sinal_adc = [x - offset for x in adc]
+        rms_adc = math.sqrt(sum(x * x for x in sinal_adc) / len(sinal_adc))
+        rms_corrente_adc = self._calcular_rms_adc()
         duracao_s = (tempos_us[-1] - tempos_us[0]) / 1_000_000
         sps = (len(self.amostras) - 1) / duracao_s if duracao_s > 0 else 0
         corrente_txt = ""
         if self.fator_a_por_adc > 0:
-            corrente_rms = rms_adc * self.fator_a_por_adc
+            corrente_rms = rms_corrente_adc * self.fator_a_por_adc
             corrente_txt = f"\nCorrente RMS: {corrente_rms:.4f} A"
             self.metric_corrente_var.set(f"{corrente_rms:.4f} A")
         else:
