@@ -148,7 +148,7 @@ class DaqApp(tk.Tk):
             textvariable=self.visualizacao_var,
             width=14,
             state="readonly",
-            values=["Tempo", "FFT", "Tempo + FFT"],
+            values=["Tempo", "FFT", "Tempo + FFT", "Corrente + Tensao"],
         )
         self.visualizacao_combo.grid(row=0, column=5, sticky="w", padx=(0, 18))
         self.visualizacao_combo.bind("<<ComboboxSelected>>", lambda _event: self._atualizar_grafico())
@@ -554,7 +554,11 @@ class DaqApp(tk.Tk):
         self.fig.clear()
         visualizacao = self.visualizacao_var.get()
 
-        if visualizacao == "Tempo + FFT":
+        if visualizacao == "Corrente + Tensao":
+            ax_corrente = self.fig.add_subplot(211)
+            ax_tensao = self.fig.add_subplot(212, sharex=ax_corrente)
+            self._desenhar_corrente_tensao(ax_corrente, ax_tensao, pontos)
+        elif visualizacao == "Tempo + FFT":
             self.ax = self.fig.add_subplot(211)
             self._desenhar_tempo(indices, tempos, sinal)
             ax_fft = self.fig.add_subplot(212)
@@ -579,6 +583,44 @@ class DaqApp(tk.Tk):
         self.ax.set_xlabel("Tempo (s)")
         self.ax.set_ylabel(self._rotulo_eixo_y())
         self.ax.grid(True)
+
+    def _desenhar_corrente_tensao(self, ax_corrente, ax_tensao, pontos: list[tuple[int, ...]]) -> None:
+        tempos = [item[1] / 1_000_000 for item in pontos]
+        indices = [item[0] for item in pontos]
+
+        corrente_adc = [self._adc_corrente(item) for item in pontos]
+        tensao_adc = [self._adc_tensao(item) for item in pontos]
+
+        offset_corrente = sum(self._adc_corrente(item) for item in self.amostras) / len(self.amostras)
+        offset_tensao = sum(self._adc_tensao(item) for item in self.amostras) / len(self.amostras)
+
+        corrente_sinal = [valor - offset_corrente for valor in corrente_adc]
+        tensao_sinal = [valor - offset_tensao for valor in tensao_adc]
+
+        if self.fator_a_por_adc > 0:
+            corrente_sinal = [valor * self.fator_a_por_adc for valor in corrente_sinal]
+            corrente_label = "Corrente instantanea estimada (A)"
+        else:
+            corrente_label = "Corrente ADC - offset"
+
+        self.ax = ax_corrente
+        self._plotar_com_lacunas(indices, tempos, corrente_sinal)
+        ax_corrente.set_title("Corrente SCT013")
+        ax_corrente.set_ylabel(corrente_label)
+        ax_corrente.grid(True)
+
+        self.ax = ax_tensao
+        self._plotar_com_lacunas(indices, tempos, tensao_sinal)
+        ax_tensao.set_title("Tensao ZMPT101B")
+        ax_tensao.set_xlabel("Tempo (s)")
+        ax_tensao.set_ylabel("Tensao ADC - offset")
+        ax_tensao.grid(True)
+
+        try:
+            self._aplicar_limite_x_salvo(ax_corrente)
+            self._aplicar_limite_x_salvo(ax_tensao)
+        except ValueError:
+            pass
 
     def _desenhar_fft(self, ax_fft) -> None:
         try:
@@ -657,12 +699,7 @@ class DaqApp(tk.Tk):
         self.ax.plot(tempos[inicio:], sinal[inicio:], linewidth=1)
 
     def _aplicar_limites_salvos(self) -> None:
-        if self.x_min_var.get() and self.x_max_var.get():
-            x_min = float(self.x_min_var.get())
-            x_max = float(self.x_max_var.get())
-            if x_min >= x_max:
-                raise ValueError("X min precisa ser menor que X max.")
-            self.ax.set_xlim(x_min, x_max)
+        self._aplicar_limite_x_salvo(self.ax)
 
         if self.y_min_var.get() and self.y_max_var.get():
             y_min = float(self.y_min_var.get())
@@ -670,6 +707,14 @@ class DaqApp(tk.Tk):
             if y_min >= y_max:
                 raise ValueError("Y min precisa ser menor que Y max.")
             self.ax.set_ylim(y_min, y_max)
+
+    def _aplicar_limite_x_salvo(self, ax) -> None:
+        if self.x_min_var.get() and self.x_max_var.get():
+            x_min = float(self.x_min_var.get())
+            x_max = float(self.x_max_var.get())
+            if x_min >= x_max:
+                raise ValueError("X min precisa ser menor que X max.")
+            ax.set_xlim(x_min, x_max)
 
     def _aplicar_escala(self) -> None:
         try:
