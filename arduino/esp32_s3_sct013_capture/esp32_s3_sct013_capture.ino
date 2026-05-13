@@ -32,6 +32,8 @@ uint32_t tempo_captura = TEMPO_CAPTURA_PADRAO;
 uint32_t num_amostras = TAXA_AMOSTRAGEM_PADRAO * TEMPO_CAPTURA_PADRAO;
 uint32_t intervalo_us = 1000000UL / TAXA_AMOSTRAGEM_PADRAO;
 bool modo_stream = false;
+bool modo_binario = false;
+bool modo_stream_binario = false;
 
 uint16_t *amostras_corrente = nullptr;
 uint16_t *amostras_tensao = nullptr;
@@ -44,6 +46,8 @@ bool configurarCaptura(String comando) {
     taxa_amostragem = TAXA_AMOSTRAGEM_PADRAO;
     tempo_captura = TEMPO_CAPTURA_PADRAO;
     modo_stream = false;
+    modo_binario = false;
+    modo_stream_binario = false;
   } else if (comando.startsWith("START,")) {
     int primeira_virgula = comando.indexOf(',');
     int segunda_virgula = comando.indexOf(',', primeira_virgula + 1);
@@ -59,12 +63,16 @@ bool configurarCaptura(String comando) {
     if (terceira_virgula < 0) {
       tempo_captura = comando.substring(segunda_virgula + 1).toInt();
       modo_stream = false;
+      modo_binario = false;
+      modo_stream_binario = false;
     } else {
       tempo_captura = comando.substring(segunda_virgula + 1, terceira_virgula).toInt();
       String modo = comando.substring(terceira_virgula + 1);
       modo.trim();
       modo.toUpperCase();
       modo_stream = modo == "STREAM";
+      modo_binario = modo == "BIN" || modo == "BINARY" || modo == "BINARIO";
+      modo_stream_binario = modo == "STREAM_BIN" || modo == "BIN_STREAM" || modo == "CONTINUO_BINARIO";
     }
   } else {
     return false;
@@ -75,13 +83,13 @@ bool configurarCaptura(String comando) {
     return false;
   }
 
-  if ((!modo_stream && tempo_captura < TEMPO_MIN) || tempo_captura > TEMPO_MAX) {
+  if ((!(modo_stream || modo_stream_binario) && tempo_captura < TEMPO_MIN) || tempo_captura > TEMPO_MAX) {
     Serial.println("ERROR,Tempo fora do limite");
     return false;
   }
 
   num_amostras = taxa_amostragem * tempo_captura;
-  if (!modo_stream && num_amostras == 0) {
+  if (!(modo_stream || modo_stream_binario) && num_amostras == 0) {
     Serial.println("ERROR,Quantidade de amostras fora do limite");
     return false;
   }
@@ -142,7 +150,7 @@ void aguardarComando() {
       Serial.print("COMANDO_RECEBIDO,");
       Serial.println(comando);
 
-      if (configurarCaptura(comando) && (modo_stream || prepararBuffers())) {
+      if (configurarCaptura(comando) && (modo_stream || modo_stream_binario || prepararBuffers())) {
         return;
       }
 
@@ -192,6 +200,30 @@ void transmitir() {
     Serial.println(amostras_tensao[i]);
   }
 
+  Serial.println("END_CAPTURE");
+}
+
+void transmitirBinario() {
+  Serial.println("BEGIN_CAPTURE");
+  Serial.print("SPS,");
+  Serial.println(taxa_amostragem);
+  Serial.print("DURATION_S,");
+  Serial.println(tempo_captura);
+  Serial.print("SAMPLES,");
+  Serial.println(num_amostras);
+  Serial.println("MODE,BIN");
+  Serial.println("CHANNELS,CURRENT_GPIO4,VOLTAGE_GPIO5");
+  Serial.println("FORMAT,BINARY_LE_U32_U16_U16");
+  Serial.println("RECORD_BYTES,8");
+  Serial.println("BINARY_BEGIN");
+
+  for (uint32_t i = 0; i < num_amostras; i++) {
+    Serial.write((uint8_t *)&tempos[i], sizeof(uint32_t));
+    Serial.write((uint8_t *)&amostras_corrente[i], sizeof(uint16_t));
+    Serial.write((uint8_t *)&amostras_tensao[i], sizeof(uint16_t));
+  }
+
+  Serial.println();
   Serial.println("END_CAPTURE");
 }
 
@@ -266,6 +298,69 @@ void capturarTransmitindo() {
   Serial.println("END_CAPTURE");
 }
 
+void capturarTransmitindoBinario() {
+  uint16_t pacote_corrente[STREAM_PACOTE_AMOSTRAS];
+  uint16_t pacote_tensao[STREAM_PACOTE_AMOSTRAS];
+  uint32_t pacote_tempos[STREAM_PACOTE_AMOSTRAS];
+
+  Serial.println("BEGIN_CAPTURE");
+  Serial.print("SPS,");
+  Serial.println(taxa_amostragem);
+  Serial.print("DURATION_S,");
+  Serial.println(tempo_captura);
+  Serial.print("SAMPLES,");
+  if (tempo_captura == 0) {
+    Serial.println("CONTINUOUS");
+  } else {
+    Serial.println(num_amostras);
+  }
+  Serial.println("MODE,STREAM_BIN");
+  Serial.println("CHANNELS,CURRENT_GPIO4,VOLTAGE_GPIO5");
+  Serial.println("FORMAT,BINARY_LE_U32_U16_U16");
+  Serial.println("RECORD_BYTES,8");
+  Serial.println("PACKET_FORMAT,BINARY_PACKET_INDEX_COUNT");
+
+  uint32_t inicio = micros();
+  uint32_t indice = 0;
+
+  while (tempo_captura == 0 || indice < num_amostras) {
+    uint32_t restantes = tempo_captura == 0 ? STREAM_PACOTE_AMOSTRAS : num_amostras - indice;
+    uint32_t tamanho_pacote = min((uint32_t)STREAM_PACOTE_AMOSTRAS, restantes);
+    uint32_t proxima_amostra = micros();
+
+    for (uint32_t j = 0; j < tamanho_pacote; j++) {
+      while ((int32_t)(micros() - proxima_amostra) < 0) {
+      }
+
+      uint32_t agora = micros();
+      pacote_tempos[j] = agora - inicio;
+      pacote_corrente[j] = analogRead(ADC_CORRENTE_PIN);
+      pacote_tensao[j] = analogRead(ADC_TENSAO_PIN);
+      proxima_amostra += intervalo_us;
+    }
+
+    Serial.print("BINARY_PACKET,");
+    Serial.print(indice);
+    Serial.print(",");
+    Serial.println(tamanho_pacote);
+
+    for (uint32_t j = 0; j < tamanho_pacote; j++) {
+      Serial.write((uint8_t *)&pacote_tempos[j], sizeof(uint32_t));
+      Serial.write((uint8_t *)&pacote_corrente[j], sizeof(uint16_t));
+      Serial.write((uint8_t *)&pacote_tensao[j], sizeof(uint16_t));
+    }
+
+    if (stopSolicitado()) {
+      Serial.println("STOPPED");
+      break;
+    }
+
+    indice += tamanho_pacote;
+  }
+
+  Serial.println("END_CAPTURE");
+}
+
 void setup() {
   Serial.begin(921600);
   Serial.setTimeout(100);
@@ -292,10 +387,18 @@ void loop() {
     capturarTransmitindo();
     return;
   }
+  if (modo_stream_binario) {
+    capturarTransmitindoBinario();
+    return;
+  }
 
   capturar();
   Serial.println("TRANSMITINDO");
-  transmitir();
+  if (modo_binario) {
+    transmitirBinario();
+  } else {
+    transmitir();
+  }
 
   free(amostras_corrente);
   free(amostras_tensao);

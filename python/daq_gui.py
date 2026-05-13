@@ -2,6 +2,7 @@ import csv
 import json
 import math
 import queue
+import struct
 import threading
 import time
 import tkinter as tk
@@ -15,7 +16,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 BEGIN_CAPTURE_TIMEOUT_S = 12.0
 CALIBRACAO_ARQUIVO = Path.cwd() / "calibracao_daq.json"
 
@@ -41,12 +42,16 @@ class DaqApp(tk.Tk):
         self.baud_var = tk.StringVar(value="921600")
         self.sps_var = tk.StringVar(value="2000")
         self.tempo_var = tk.StringVar(value="5")
-        self.modo_var = tk.StringVar(value="Bloco")
+        self.modo_var = tk.StringVar(value="Binario")
         self.csv_var = tk.StringVar(value=str(Path.cwd() / "captura_esp32_gui.csv"))
         self.x_min_var = tk.StringVar()
         self.x_max_var = tk.StringVar()
         self.y_min_var = tk.StringVar()
         self.y_max_var = tk.StringVar()
+        self.tensao_x_min_var = tk.StringVar()
+        self.tensao_x_max_var = tk.StringVar()
+        self.tensao_y_min_var = tk.StringVar()
+        self.tensao_y_max_var = tk.StringVar()
         self.grafico_var = tk.StringVar(value="ADC - offset")
         self.canal_var = tk.StringVar(value="Corrente SCT013 (GPIO4)")
         self.visualizacao_var = tk.StringVar(value="Tempo")
@@ -91,7 +96,7 @@ class DaqApp(tk.Tk):
         principal.rowconfigure(1, weight=1)
         corpo.add(principal, weight=5)
 
-        controles = ttk.Notebook(principal, height=118)
+        controles = ttk.Notebook(principal, height=150)
         controles.grid(row=0, column=0, sticky="ew", pady=(0, 8))
 
         aquisicao_tab = ttk.Frame(controles, padding=10)
@@ -113,7 +118,13 @@ class DaqApp(tk.Tk):
         ttk.Entry(aquisicao_tab, textvariable=self.tempo_var, width=10).grid(row=0, column=8, padx=(0, 18))
 
         ttk.Label(aquisicao_tab, text="Modo").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=(10, 0))
-        self.modo_combo = ttk.Combobox(aquisicao_tab, textvariable=self.modo_var, width=12, state="readonly", values=["Bloco", "Continuo"])
+        self.modo_combo = ttk.Combobox(
+            aquisicao_tab,
+            textvariable=self.modo_var,
+            width=18,
+            state="readonly",
+            values=["Binario", "Bloco", "Continuo", "Continuo Binario"],
+        )
         self.modo_combo.grid(row=1, column=1, sticky="w", padx=(0, 18), pady=(10, 0))
 
         self.iniciar_btn = ttk.Button(aquisicao_tab, text="Iniciar captura", command=self.iniciar, style="Primary.TButton")
@@ -157,9 +168,9 @@ class DaqApp(tk.Tk):
             values=["Tempo", "FFT", "Tempo + FFT", "Corrente + Tensao"],
         )
         self.visualizacao_combo.grid(row=0, column=5, sticky="w", padx=(0, 18))
-        self.visualizacao_combo.bind("<<ComboboxSelected>>", lambda _event: self._atualizar_grafico())
+        self.visualizacao_combo.bind("<<ComboboxSelected>>", self._trocar_visualizacao)
 
-        ttk.Label(visual_tab, text="X min").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Label(visual_tab, text="Corrente X min").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=(10, 0))
         ttk.Entry(visual_tab, textvariable=self.x_min_var, width=10).grid(row=1, column=1, sticky="w", padx=(0, 18), pady=(10, 0))
         ttk.Label(visual_tab, text="X max").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=(10, 0))
         ttk.Entry(visual_tab, textvariable=self.x_max_var, width=10).grid(row=1, column=3, sticky="w", padx=(0, 18), pady=(10, 0))
@@ -169,6 +180,15 @@ class DaqApp(tk.Tk):
         ttk.Entry(visual_tab, textvariable=self.y_max_var, width=10).grid(row=1, column=7, sticky="w", padx=(0, 18), pady=(10, 0))
         ttk.Button(visual_tab, text="Aplicar escala", command=self._aplicar_escala).grid(row=1, column=8, padx=(0, 8), pady=(10, 0))
         ttk.Button(visual_tab, text="Auto", command=self._escala_auto).grid(row=1, column=9, pady=(10, 0))
+
+        ttk.Label(visual_tab, text="Tensao X min").grid(row=2, column=0, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Entry(visual_tab, textvariable=self.tensao_x_min_var, width=10).grid(row=2, column=1, sticky="w", padx=(0, 18), pady=(10, 0))
+        ttk.Label(visual_tab, text="X max").grid(row=2, column=2, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Entry(visual_tab, textvariable=self.tensao_x_max_var, width=10).grid(row=2, column=3, sticky="w", padx=(0, 18), pady=(10, 0))
+        ttk.Label(visual_tab, text="Y min").grid(row=2, column=4, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Entry(visual_tab, textvariable=self.tensao_y_min_var, width=10).grid(row=2, column=5, sticky="w", padx=(0, 18), pady=(10, 0))
+        ttk.Label(visual_tab, text="Y max").grid(row=2, column=6, sticky="w", padx=(0, 6), pady=(10, 0))
+        ttk.Entry(visual_tab, textvariable=self.tensao_y_max_var, width=10).grid(row=2, column=7, sticky="w", padx=(0, 18), pady=(10, 0))
 
         calibracao_tab = ttk.Frame(controles, padding=10)
         calibracao_tab.columnconfigure(5, weight=1)
@@ -207,7 +227,7 @@ class DaqApp(tk.Tk):
         ttk.Label(versao_tab, text="Versao").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=2)
         ttk.Label(versao_tab, text=APP_VERSION, style="MetricValue.TLabel").grid(row=1, column=1, sticky="w", padx=(0, 28), pady=2)
         ttk.Label(versao_tab, text="Branch de referencia").grid(row=1, column=2, sticky="w", padx=(0, 12), pady=2)
-        ttk.Label(versao_tab, text="v1.0.2", style="MetricValue.TLabel").grid(row=1, column=3, sticky="w", pady=2)
+        ttk.Label(versao_tab, text="v1.0.3", style="MetricValue.TLabel").grid(row=1, column=3, sticky="w", pady=2)
 
         grafico_frame = ttk.Frame(principal)
         grafico_frame.rowconfigure(1, weight=1)
@@ -303,6 +323,33 @@ class DaqApp(tk.Tk):
         if tensao_ref:
             self.tensao_ref_var.set(str(tensao_ref))
 
+        configuracao = dados.get("configuracao", {})
+        if isinstance(configuracao, dict):
+            self.porta_var.set(str(configuracao.get("porta", self.porta_var.get())))
+            self.baud_var.set(str(configuracao.get("baud", self.baud_var.get())))
+            self.sps_var.set(str(configuracao.get("sps", self.sps_var.get())))
+            self.tempo_var.set(str(configuracao.get("tempo_s", self.tempo_var.get())))
+            self.modo_var.set(str(configuracao.get("modo", self.modo_var.get())))
+            self.canal_var.set(str(configuracao.get("canal", self.canal_var.get())))
+            self.grafico_var.set(str(configuracao.get("grafico", self.grafico_var.get())))
+            self.visualizacao_var.set(str(configuracao.get("visualizacao", self.visualizacao_var.get())))
+            self.csv_var.set(str(configuracao.get("csv", self.csv_var.get())))
+
+        escalas = dados.get("escalas", {})
+        if isinstance(escalas, dict):
+            corrente = escalas.get("corrente", {})
+            tensao = escalas.get("tensao", {})
+            if isinstance(corrente, dict):
+                self.x_min_var.set(str(corrente.get("x_min", "")))
+                self.x_max_var.set(str(corrente.get("x_max", "")))
+                self.y_min_var.set(str(corrente.get("y_min", "")))
+                self.y_max_var.set(str(corrente.get("y_max", "")))
+            if isinstance(tensao, dict):
+                self.tensao_x_min_var.set(str(tensao.get("x_min", "")))
+                self.tensao_x_max_var.set(str(tensao.get("x_max", "")))
+                self.tensao_y_min_var.set(str(tensao.get("y_min", "")))
+                self.tensao_y_max_var.set(str(tensao.get("y_max", "")))
+
         self._log(f"Calibracao carregada de {CALIBRACAO_ARQUIVO}")
 
     def _salvar_calibracao(self) -> None:
@@ -312,6 +359,31 @@ class DaqApp(tk.Tk):
             "fator_v_por_adc": self.fator_v_por_adc,
             "corrente_ref_rms_a": self.corrente_ref_var.get().strip(),
             "tensao_ref_rms_v": self.tensao_ref_var.get().strip(),
+            "configuracao": {
+                "porta": self.porta_var.get().strip(),
+                "baud": self.baud_var.get().strip(),
+                "sps": self.sps_var.get().strip(),
+                "tempo_s": self.tempo_var.get().strip(),
+                "modo": self.modo_var.get().strip(),
+                "canal": self.canal_var.get().strip(),
+                "grafico": self.grafico_var.get().strip(),
+                "visualizacao": self.visualizacao_var.get().strip(),
+                "csv": self.csv_var.get().strip(),
+            },
+            "escalas": {
+                "corrente": {
+                    "x_min": self.x_min_var.get().strip(),
+                    "x_max": self.x_max_var.get().strip(),
+                    "y_min": self.y_min_var.get().strip(),
+                    "y_max": self.y_max_var.get().strip(),
+                },
+                "tensao": {
+                    "x_min": self.tensao_x_min_var.get().strip(),
+                    "x_max": self.tensao_x_max_var.get().strip(),
+                    "y_min": self.tensao_y_min_var.get().strip(),
+                    "y_max": self.tensao_y_max_var.get().strip(),
+                },
+            },
         }
 
         try:
@@ -334,6 +406,7 @@ class DaqApp(tk.Tk):
         if caminho:
             self._exportar_csv(Path(caminho))
             self.csv_var.set(caminho)
+            self._salvar_calibracao()
             self.status_var.set(f"CSV salvo: {caminho}")
             self._log(f"CSV salvo: {caminho}")
 
@@ -361,14 +434,22 @@ class DaqApp(tk.Tk):
             messagebox.showerror("SPS invalido", "Use SPS entre 100 e 20000.")
             return
 
-        modo = "STREAM" if self.modo_var.get() == "Continuo" else "BLOCK"
+        modo_escolhido = self.modo_var.get()
+        if modo_escolhido == "Continuo":
+            modo = "STREAM"
+        elif modo_escolhido == "Continuo Binario":
+            modo = "STREAM_BIN"
+        elif modo_escolhido == "Binario":
+            modo = "BIN"
+        else:
+            modo = "BLOCK"
 
-        if modo == "STREAM":
+        if modo in ("STREAM", "STREAM_BIN"):
             tempo_valido = 0 <= tempo_s <= 60
-            mensagem_tempo = "Use tempo entre 0 e 60 segundos. No modo Continuo, 0 roda ate clicar Stop."
+            mensagem_tempo = "Use tempo entre 0 e 60 segundos. Nos modos Continuo, 0 roda ate clicar Stop."
         else:
             tempo_valido = 1 <= tempo_s <= 60
-            mensagem_tempo = "Use tempo entre 1 e 60 segundos no modo Bloco."
+            mensagem_tempo = "Use tempo entre 1 e 60 segundos no modo Bloco ou Binario."
 
         if not tempo_valido:
             messagebox.showerror("Tempo invalido", mensagem_tempo)
@@ -378,6 +459,7 @@ class DaqApp(tk.Tk):
             messagebox.showerror("Captura grande demais", "Use no maximo 120000 amostras por captura.")
             return
 
+        self._salvar_calibracao()
         self.amostras.clear()
         self.modo_atual = modo
         self.sps_atual = sps
@@ -454,7 +536,22 @@ class DaqApp(tk.Tk):
                     self.eventos.put(("log", "ESP32-S3 parou a captura continua."))
                     continue
 
+                if linha == "BINARY_BEGIN":
+                    self._ler_amostras_binarias(metadados)
+                    cabecalho = True
+                    continue
+
                 partes = linha.split(",")
+
+                if len(partes) == 3 and partes[0] == "BINARY_PACKET":
+                    try:
+                        indice_inicial = int(partes[1])
+                        quantidade = int(partes[2])
+                    except ValueError:
+                        continue
+                    self.eventos.put(("status", "Recebendo pacote binario..."))
+                    self.eventos.put(("amostras", self._ler_lote_binario(indice_inicial, quantidade)))
+                    continue
 
                 if not cabecalho and len(partes) == 2:
                     metadados[partes[0]] = partes[1]
@@ -485,6 +582,8 @@ class DaqApp(tk.Tk):
             self.eventos.put(("finalizado", None))
         except serial.SerialException as exc:
             self.eventos.put(("erro", f"Erro serial: {exc}"))
+        except TimeoutError as exc:
+            self.eventos.put(("erro", str(exc)))
         except OSError as exc:
             self.eventos.put(("erro", f"Erro de arquivo/sistema: {exc}"))
         finally:
@@ -499,6 +598,70 @@ class DaqApp(tk.Tk):
         if not self.ser or not self.ser.is_open:
             return ""
         return self.ser.readline().decode("utf-8", errors="ignore").strip()
+
+    def _ler_bytes_exatos(self, total_bytes: int) -> bytes:
+        if not self.ser or not self.ser.is_open:
+            raise TimeoutError("Serial fechada durante a leitura binaria.")
+
+        partes: list[bytes] = []
+        recebidos = 0
+        bytes_por_segundo = max(self.ser.baudrate / 10, 1)
+        limite = time.monotonic() + max(5.0, total_bytes / bytes_por_segundo + 5.0)
+
+        while recebidos < total_bytes and not self.stop_event.is_set():
+            pedaco = self.ser.read(total_bytes - recebidos)
+            if pedaco:
+                partes.append(pedaco)
+                recebidos += len(pedaco)
+                continue
+
+            if time.monotonic() > limite:
+                raise TimeoutError(
+                    f"Timeout recebendo dados binarios: {recebidos} de {total_bytes} bytes."
+                )
+
+        return b"".join(partes)
+
+    def _ler_amostras_binarias(self, metadados: dict[str, str]) -> None:
+        try:
+            total_amostras = int(metadados.get("SAMPLES", "0"))
+            record_bytes = int(metadados.get("RECORD_BYTES", "8"))
+        except ValueError as exc:
+            raise TimeoutError("Metadados binarios invalidos recebidos do ESP32-S3.") from exc
+
+        if total_amostras <= 0:
+            raise TimeoutError("Quantidade de amostras binaria invalida.")
+        if record_bytes != 8:
+            raise TimeoutError(f"Formato binario nao suportado: {record_bytes} bytes por registro.")
+
+        pacote = struct.Struct("<IHH")
+        recebidas = 0
+        tamanho_lote = 1024
+        self.eventos.put(("status", "Recebendo amostras binarias..."))
+
+        while recebidas < total_amostras and not self.stop_event.is_set():
+            quantidade = min(tamanho_lote, total_amostras - recebidas)
+            dados = self._ler_bytes_exatos(quantidade * record_bytes)
+            lote = []
+
+            for posicao, (tempo_us, adc_corrente, adc_tensao) in enumerate(pacote.iter_unpack(dados)):
+                lote.append((recebidas + posicao, tempo_us, adc_corrente, adc_tensao))
+
+            recebidas += len(lote)
+            self.eventos.put(("amostras", lote))
+
+    def _ler_lote_binario(self, indice_inicial: int, quantidade: int) -> list[tuple[int, int, int, int]]:
+        if quantidade <= 0:
+            return []
+
+        pacote = struct.Struct("<IHH")
+        dados = self._ler_bytes_exatos(quantidade * pacote.size)
+        lote = []
+
+        for posicao, (tempo_us, adc_corrente, adc_tensao) in enumerate(pacote.iter_unpack(dados)):
+            lote.append((indice_inicial + posicao, tempo_us, adc_corrente, adc_tensao))
+
+        return lote
 
     def _processar_eventos(self) -> None:
         mudou_grafico = False
@@ -515,6 +678,9 @@ class DaqApp(tk.Tk):
                 self._log(str(valor))
             elif tipo == "amostra":
                 self.amostras.append(valor)  # type: ignore[arg-type]
+                mudou_grafico = True
+            elif tipo == "amostras":
+                self.amostras.extend(valor)  # type: ignore[arg-type]
                 mudou_grafico = True
             elif tipo == "metadata":
                 metadados = valor  # type: ignore[assignment]
@@ -597,7 +763,7 @@ class DaqApp(tk.Tk):
         if not self.amostras:
             return
 
-        if self.modo_atual == "STREAM":
+        if self.modo_atual in ("STREAM", "STREAM_BIN"):
             pontos = self.amostras[-4000:]
         else:
             pontos = self.amostras
@@ -613,7 +779,7 @@ class DaqApp(tk.Tk):
 
         if visualizacao == "Corrente + Tensao":
             ax_corrente = self.fig.add_subplot(211)
-            ax_tensao = self.fig.add_subplot(212, sharex=ax_corrente)
+            ax_tensao = self.fig.add_subplot(212)
             self._desenhar_corrente_tensao(ax_corrente, ax_tensao, pontos)
         elif visualizacao == "Tempo + FFT":
             self.ax = self.fig.add_subplot(211)
@@ -633,7 +799,8 @@ class DaqApp(tk.Tk):
     def _desenhar_tempo(self, indices: list[int], tempos: list[float], sinal: list[float]) -> None:
         self._plotar_com_lacunas(indices, tempos, sinal)
         try:
-            self._aplicar_limites_salvos()
+            canal = "tensao" if self._canal_tensao_selecionado() else "corrente"
+            self._aplicar_limites_salvos(self.ax, canal)
         except ValueError:
             pass
         self.ax.set_title("Sinal capturado")
@@ -680,8 +847,8 @@ class DaqApp(tk.Tk):
         ax_tensao.grid(True)
 
         try:
-            self._aplicar_limite_x_salvo(ax_corrente)
-            self._aplicar_limite_x_salvo(ax_tensao)
+            self._aplicar_limites_salvos(ax_corrente, "corrente")
+            self._aplicar_limites_salvos(ax_tensao, "tensao")
         except ValueError:
             pass
 
@@ -769,41 +936,74 @@ class DaqApp(tk.Tk):
 
         self.ax.plot(tempos[inicio:], sinal[inicio:], linewidth=1)
 
-    def _aplicar_limites_salvos(self) -> None:
-        self._aplicar_limite_x_salvo(self.ax)
+    def _vars_escala(self, canal: str) -> tuple[tk.StringVar, tk.StringVar, tk.StringVar, tk.StringVar]:
+        if canal == "tensao":
+            return self.tensao_x_min_var, self.tensao_x_max_var, self.tensao_y_min_var, self.tensao_y_max_var
+        return self.x_min_var, self.x_max_var, self.y_min_var, self.y_max_var
 
-        if self.y_min_var.get() and self.y_max_var.get():
-            y_min = float(self.y_min_var.get())
-            y_max = float(self.y_max_var.get())
+    def _aplicar_limites_salvos(self, ax, canal: str) -> None:
+        x_min_var, x_max_var, y_min_var, y_max_var = self._vars_escala(canal)
+        self._aplicar_limite_x_salvo(ax, x_min_var, x_max_var)
+
+        if y_min_var.get() and y_max_var.get():
+            y_min = float(y_min_var.get())
+            y_max = float(y_max_var.get())
             if y_min >= y_max:
                 raise ValueError("Y min precisa ser menor que Y max.")
-            self.ax.set_ylim(y_min, y_max)
+            ax.set_ylim(y_min, y_max)
 
-    def _aplicar_limite_x_salvo(self, ax) -> None:
-        if self.x_min_var.get() and self.x_max_var.get():
-            x_min = float(self.x_min_var.get())
-            x_max = float(self.x_max_var.get())
+    def _aplicar_limite_x_salvo(self, ax, x_min_var: tk.StringVar, x_max_var: tk.StringVar) -> None:
+        if x_min_var.get() and x_max_var.get():
+            x_min = float(x_min_var.get())
+            x_max = float(x_max_var.get())
             if x_min >= x_max:
                 raise ValueError("X min precisa ser menor que X max.")
             ax.set_xlim(x_min, x_max)
 
+    def _validar_escala(self, canal: str) -> None:
+        x_min_var, x_max_var, y_min_var, y_max_var = self._vars_escala(canal)
+
+        if x_min_var.get() or x_max_var.get():
+            if not (x_min_var.get() and x_max_var.get()):
+                raise ValueError(f"Informe X min e X max para {canal}.")
+            x_min = float(x_min_var.get())
+            x_max = float(x_max_var.get())
+            if x_min >= x_max:
+                raise ValueError(f"X min precisa ser menor que X max para {canal}.")
+
+        if y_min_var.get() or y_max_var.get():
+            if not (y_min_var.get() and y_max_var.get()):
+                raise ValueError(f"Informe Y min e Y max para {canal}.")
+            y_min = float(y_min_var.get())
+            y_max = float(y_max_var.get())
+            if y_min >= y_max:
+                raise ValueError(f"Y min precisa ser menor que Y max para {canal}.")
+
     def _aplicar_escala(self) -> None:
         try:
-            self._aplicar_limites_salvos()
-            self.canvas.draw_idle()
+            self._validar_escala("corrente")
+            self._validar_escala("tensao")
+            self._salvar_calibracao()
+            self._atualizar_grafico()
         except ValueError as exc:
             messagebox.showerror("Escala invalida", str(exc) or "Use numeros validos para os limites dos eixos.")
 
     def _escala_auto(self) -> None:
-        self.x_min_var.set("")
-        self.x_max_var.set("")
-        self.y_min_var.set("")
-        self.y_max_var.set("")
+        if self._canal_tensao_selecionado():
+            vars_escala = self._vars_escala("tensao")
+        else:
+            vars_escala = self._vars_escala("corrente")
+        for var in vars_escala:
+            var.set("")
+        self._salvar_calibracao()
+        self._atualizar_grafico()
+
+    def _trocar_visualizacao(self, _event: object | None = None) -> None:
+        self._salvar_calibracao()
         self._atualizar_grafico()
 
     def _trocar_modo_grafico(self, _event: object | None = None) -> None:
-        self.y_min_var.set("")
-        self.y_max_var.set("")
+        self._salvar_calibracao()
         if self.grafico_var.get() == "Corrente (A)" and not self._canal_corrente_selecionado():
             self._log("Grafico em A usa a calibracao do SCT013. Para tensao, exibindo ADC - offset.")
         elif self.grafico_var.get() == "Corrente (A)" and self.fator_a_por_adc <= 0:
@@ -815,8 +1015,7 @@ class DaqApp(tk.Tk):
         self._atualizar_grafico()
 
     def _trocar_canal(self, _event: object | None = None) -> None:
-        self.y_min_var.set("")
-        self.y_max_var.set("")
+        self._salvar_calibracao()
         self._atualizar_resumo()
         self._atualizar_grafico()
 
