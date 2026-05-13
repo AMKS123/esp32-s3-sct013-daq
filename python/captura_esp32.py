@@ -154,7 +154,7 @@ def plotar(amostras: list[tuple[int, ...]]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Captura dados do ESP32-S3 via serial.")
     parser.add_argument("--porta", default="COM10", help="Porta serial. Exemplo: COM10")
-    parser.add_argument("--baud", type=int, default=115200, help="Baud rate")
+    parser.add_argument("--baud", type=int, default=921600, help="Baud rate")
     parser.add_argument("--sps", type=int, default=2000, help="Amostras por segundo")
     parser.add_argument("--tempo", type=int, default=5, help="Tempo de captura em segundos")
     parser.add_argument("--csv", default="captura_esp32.csv", help="Arquivo CSV de saida")
