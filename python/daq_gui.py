@@ -15,6 +15,7 @@ from matplotlib.figure import Figure
 
 
 APP_VERSION = "1.1.0"
+BEGIN_CAPTURE_TIMEOUT_S = 12.0
 
 
 class DaqApp(tk.Tk):
@@ -336,19 +337,34 @@ class DaqApp(tk.Tk):
         try:
             self.eventos.put(("status", f"Abrindo {porta}..."))
             self.ser = serial.Serial(porta, baud, timeout=1)
+            self.eventos.put(("status", f"{porta} aberta. Aguardando ESP32-S3..."))
             time.sleep(2)
             self.ser.reset_input_buffer()
 
             comando = f"START,{sps},{tempo_s},{modo}\n"
+            self.eventos.put(("status", "Enviando comando START..."))
             self.eventos.put(("log", f"Enviando {comando.strip()} para o ESP32-S3."))
             self.ser.write(comando.encode("ascii"))
 
+            self.eventos.put(("status", "Aguardando resposta do ESP32-S3..."))
+            limite_inicio = time.monotonic() + BEGIN_CAPTURE_TIMEOUT_S
             while not self.stop_event.is_set():
                 linha = self._ler_linha_serial()
                 if linha:
                     self.eventos.put(("log", linha))
                 if linha == "BEGIN_CAPTURE":
                     break
+                if time.monotonic() > limite_inicio:
+                    self.eventos.put(
+                        (
+                            "erro",
+                            "O ESP32-S3 nao respondeu ao comando START.\n\n"
+                            "Verifique se a porta COM esta correta, se o baud do programa "
+                            "combina com o firmware, se o Monitor Serial da Arduino IDE esta "
+                            "fechado e se o firmware DAQ foi gravado no ESP32-S3.",
+                        )
+                    )
+                    return
 
             if self.stop_event.is_set():
                 self.eventos.put(("cancelado", None))
