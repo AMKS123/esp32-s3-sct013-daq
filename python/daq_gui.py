@@ -16,16 +16,18 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.3-rpi"
 BEGIN_CAPTURE_TIMEOUT_S = 12.0
-CALIBRACAO_ARQUIVO = Path.cwd() / "calibracao_daq.json"
+PORTA_PADRAO = "/dev/ttyACM0"
+DIRETORIO_DAQ = Path.home() / "Documents" / "esp32_s3_daq"
+CALIBRACAO_ARQUIVO = Path.home() / ".config" / "esp32_s3_daq" / "calibracao_daq.json"
 
 
 class DaqApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
 
-        self.title(f"ESP32-S3 SCT013 DAQ v{APP_VERSION}")
+        self.title(f"ESP32-S3 SCT013 DAQ Raspberry Pi v{APP_VERSION}")
         self.geometry("1280x780")
         self.minsize(1040, 680)
 
@@ -38,12 +40,12 @@ class DaqApp(tk.Tk):
         self.sps_atual = 2000
         self.amostras_esperadas: int | None = None
 
-        self.porta_var = tk.StringVar(value="COM10")
+        self.porta_var = tk.StringVar(value=PORTA_PADRAO)
         self.baud_var = tk.StringVar(value="921600")
         self.sps_var = tk.StringVar(value="2000")
         self.tempo_var = tk.StringVar(value="5")
         self.modo_var = tk.StringVar(value="Binario")
-        self.csv_var = tk.StringVar(value=str(Path.cwd() / "captura_esp32_gui.csv"))
+        self.csv_var = tk.StringVar(value=str(DIRETORIO_DAQ / "captura_esp32_gui.csv"))
         self.x_min_var = tk.StringVar()
         self.x_max_var = tk.StringVar()
         self.y_min_var = tk.StringVar()
@@ -387,6 +389,7 @@ class DaqApp(tk.Tk):
         }
 
         try:
+            CALIBRACAO_ARQUIVO.parent.mkdir(parents=True, exist_ok=True)
             CALIBRACAO_ARQUIVO.write_text(json.dumps(dados, indent=2), encoding="utf-8")
             self._log(f"Calibracao salva em {CALIBRACAO_ARQUIVO}")
         except OSError as exc:
@@ -510,9 +513,9 @@ class DaqApp(tk.Tk):
                         (
                             "erro",
                             "O ESP32-S3 nao respondeu ao comando START.\n\n"
-                            "Verifique se a porta COM esta correta, se o baud do programa "
-                            "combina com o firmware, se o Monitor Serial da Arduino IDE esta "
-                            "fechado e se o firmware DAQ foi gravado no ESP32-S3.",
+                            "Verifique se a porta serial esta correta, se o baud do programa "
+                            "combina com o firmware, se nenhum outro programa esta usando "
+                            "a porta serial e se o firmware DAQ foi gravado no ESP32-S3.",
                         )
                     )
                     return

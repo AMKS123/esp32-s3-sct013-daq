@@ -2,14 +2,10 @@
 __pycache__/
 *.pyc
 
-# PyInstaller
-python/build/
-python/dist/
-python/*.spec
-
 # Capturas locais
 python/*.csv
 *.csv
+Documents/
 
 # Ambientes locais
 .venv/

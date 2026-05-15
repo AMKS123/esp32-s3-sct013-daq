@@ -1,167 +1,182 @@
-# ESP32-S3 SCT013 DAQ inicial
+# ESP32-S3 SCT013 DAQ para Raspberry Pi 4
 
-Projeto de aquisicao de corrente AC com ESP32-S3, sensor SCT013, interface Python, CSV, calibracao em corrente e FFT.
+Programa de aquisicao de sinais analogicos para Raspberry Pi 4 com Raspberry Pi OS. O Raspberry executa a interface Python e conversa por USB serial com um ESP32-S3 gravado com o firmware deste repositorio.
 
-Versao atual do software:
-
-```text
-1.0.2
-```
-
-Para recriar o software do zero em outro computador, leia:
+Versao atual:
 
 ```text
-GUIA_RECRIAR_SOFTWARE.md
+1.0.3-rpi
 ```
 
-Pasta local atual usada durante o desenvolvimento:
+## Hardware
+
+- Raspberry Pi 4 com Raspberry Pi OS.
+- ESP32-S3 N16R8 conectado ao Raspberry por USB.
+- SCT013-100 para corrente no GPIO4 do ESP32-S3.
+- ZMPT101B para tensao no GPIO5 do ESP32-S3.
+- Firmware do ESP32-S3 em `arduino/esp32_s3_sct013_capture/esp32_s3_sct013_capture.ino`.
+
+Porta serial padrao no Raspberry:
 
 ```text
-C:\Codex\tcc\esp32_s3_daq
+/dev/ttyACM0
 ```
 
-Este pacote tem duas partes:
+Se o dispositivo aparecer com outro nome, confira com:
 
-- `arduino/esp32_s3_sct013_capture/esp32_s3_sct013_capture.ino`: codigo para gravar no ESP32-S3 pela Arduino IDE.
-- `python/captura_esp32.py`: programa para rodar neste computador, capturar os dados via USB serial, salvar CSV e fazer analise basica.
-- `python/daq_gui.py`: interface grafica com porta serial, Inicio, Stop, grafico e resumo da captura.
-
-## 1. Gravar o ESP32-S3
-
-1. Abra a Arduino IDE.
-2. Abra o arquivo:
-   `esp32_s3_daq/arduino/esp32_s3_sct013_capture/esp32_s3_sct013_capture.ino`
-3. Selecione a placa `ESP32S3 Dev Module`.
-4. Use as configuracoes que ja funcionaram:
-   - USB CDC On Boot: `Enabled`
-   - Flash Size: `16MB`
-   - PSRAM: `OPI PSRAM`
-   - Upload Mode: `UART0 / Hardware CDC`
-   - Upload Speed: `921600`
-   - USB Mode: `Hardware CDC and JTAG`
-5. Selecione a porta, por exemplo `COM10`.
-6. Clique em Upload.
-
-## 2. Preparar o Python no computador
-
-No terminal, entre na pasta do programa:
-
-```powershell
-cd "C:\Codex\esp32-s3-sct013-daq\python"
+```bash
+ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
 ```
 
-Instale as bibliotecas:
+## Instalar no Raspberry Pi OS
 
-```powershell
-py -m pip install -r requirements.txt
+Na pasta do projeto:
+
+```bash
+chmod +x install_raspberry_pi.sh run_gui.sh run_cli_capture.sh
+./install_raspberry_pi.sh
 ```
 
-## 3. Capturar dados
+O instalador cria um ambiente virtual em `.venv`, instala as dependencias Python e prepara as pastas de dados do usuario.
 
-Feche o Serial Monitor da Arduino IDE antes de rodar o Python. A porta serial nao pode ser usada por dois programas ao mesmo tempo.
+## Abrir a Interface
 
-Rode:
-
-```powershell
-py captura_esp32.py --porta COM10 --csv captura_esp32.csv --plot
+```bash
+./run_gui.sh
 ```
 
-Para escolher taxa e tempo:
+A interface usa:
 
-```powershell
-py captura_esp32.py --porta COM10 --sps 2000 --tempo 5 --csv captura_esp32.csv --plot
+- porta serial configuravel;
+- baud padrao `921600`;
+- SPS configuravel;
+- tempo de captura configuravel;
+- modos `Bloco`, `Binario`, `Continuo` e `Continuo Binario`;
+- graficos no tempo e FFT;
+- visualizacao corrente + tensao;
+- calibracao RMS de corrente e tensao;
+- exportacao da ultima captura em CSV.
+
+As configuracoes e calibracoes ficam em:
+
+```text
+~/.config/esp32_s3_daq/calibracao_daq.json
 ```
 
-O programa vai:
+Os CSVs sugeridos ficam em:
 
-1. abrir a serial;
-2. enviar `START` para o ESP32-S3;
-3. esperar a captura terminar;
-4. salvar `captura_esp32.csv`;
-5. calcular offset medio;
-6. calcular RMS em contagens ADC;
-7. estimar o SPS real;
-8. listar os maiores picos de FFT;
-9. mostrar um grafico se `--plot` for usado.
+```text
+~/Documents/esp32_s3_daq/
+```
 
-## 4. Resultado esperado
+## Capturar pelo Terminal
 
-O CSV tera este formato:
+Modo binario, recomendado para taxas maiores:
+
+```bash
+./run_cli_capture.sh --porta /dev/ttyACM0 --baud 921600 --sps 2000 --tempo 5 --modo binario --plot
+```
+
+Modo texto:
+
+```bash
+./run_cli_capture.sh --porta /dev/ttyACM0 --modo texto
+```
+
+Modo continuo binario:
+
+```bash
+./run_cli_capture.sh --porta /dev/ttyACM0 --sps 2000 --tempo 5 --modo continuo-binario
+```
+
+## Modos de Captura
+
+| Modo na interface | Modo no firmware | Fluxo | Formato |
+| --- | --- | --- | --- |
+| `Bloco` | `BLOCK` | captura tudo na RAM e envia depois | CSV/texto |
+| `Binario` | `BIN` | captura tudo na RAM e envia depois | binario |
+| `Continuo` | `STREAM` | captura pacote e envia pacote | CSV/texto |
+| `Continuo Binario` | `STREAM_BIN` | captura pacote e envia pacote | binario |
+
+Para alta taxa de amostragem, prefira `Binario`. Para visualizacao quase em tempo real, teste `Continuo Binario`.
+
+## Formato dos Dados
+
+CSV:
 
 ```csv
-indice,tempo_us,adc
-0,0,1912
-1,500,1915
-2,1000,1921
+indice,tempo_us,adc_corrente,adc_tensao
+0,0,1902,2048
+1,500,1904,2050
 ```
 
-No terminal, voce deve ver um resumo parecido com:
+Registro binario:
 
 ```text
-Resumo da captura
------------------
-Amostras: 10000
-Duracao: 4.999500 s
-SPS real aproximado: 2000.00
-ADC min/max: 1800 / 2050
-Offset medio: 1912.34
-RMS em contagens ADC: 42.10
+tempo_us      uint32  4 bytes
+adc_corrente  uint16  2 bytes
+adc_tensao    uint16  2 bytes
 ```
 
-## 5. Observacoes
-
-- O valor RMS inicial esta em contagens ADC, ainda nao em amperes.
-- Para converter em amperes, ainda sera necessario calibrar o circuito.
-- A FFT depende do SPS real, por isso o Python calcula o SPS usando `tempo_us`.
-- Para testes com seguranca, desligue a USB antes de alterar ligacoes na protoboard.
-- Limites atuais: `100` a `20000` SPS, `1` a `60` segundos e no maximo `120000` amostras por captura.
-
-## 6. Rodar a interface grafica
-
-Feche o Serial Monitor da Arduino IDE antes de abrir a interface.
-
-No terminal:
-
-```powershell
-cd "C:\Codex\esp32-s3-sct013-daq\python"
-py -m pip install -r requirements.txt
-py daq_gui.py
-```
-
-Na janela:
-
-1. use a aba `Aquisicao`;
-2. selecione a porta, por exemplo `COM10`;
-3. informe `SPS`, por exemplo `2000`;
-4. informe `Tempo (s)`, por exemplo `5`;
-5. escolha o modo:
-   - `Bloco`: captura tudo na RAM do ESP32-S3 e envia no final;
-   - `Continuo`: captura pequenos pacotes e envia durante a aquisicao;
-6. clique em `Iniciar`;
-7. veja o grafico e o resumo;
-8. use a aba `Exportacao` para salvar a ultima captura em CSV.
-
-O botao `Stop` cancela a leitura no computador. No modo `Continuo`, o programa tambem envia `STOP` para o ESP32-S3 parar no proximo pacote. No modo `Bloco`, o ESP32-S3 pode terminar a captura em RAM antes de aceitar outro comando.
-
-No modo `Continuo`, use `Tempo (s) = 0` para capturar sem limite de tempo ate clicar em `Stop`.
-
-## 7. Gerar executavel
-
-No terminal:
-
-```powershell
-cd "C:\Codex\esp32-s3-sct013-daq\python"
-.\build_exe.bat
-```
-
-O executavel sera criado em:
+Total:
 
 ```text
-C:\Codex\esp32-s3-sct013-daq\python\dist\ESP32_S3_DAQ.exe
+8 bytes por amostra
 ```
 
-Se o projeto estiver na pasta do TCC, use o mesmo comando dentro de:
+## Firmware do ESP32-S3
+
+O Raspberry Pi executa apenas o programa Python. O ESP32-S3 precisa estar previamente gravado com o firmware DAQ.
+
+Configuracao usada no ESP32-S3:
 
 ```text
-C:\Users\andre\Documents\tcc\esp32_s3_daq\python
+USB CDC On Boot: Enabled
+USB Mode: Hardware CDC and JTAG
+Upload Mode: UART0 / Hardware CDC
+Flash Size: 16MB (128Mb)
+PSRAM: OPI PSRAM
+Upload Speed: 921600
 ```
+
+O arquivo `arduino/esp32_s3_sct013_capture/sketch.yaml` ja usa `/dev/ttyACM0` como porta padrao para ambientes Linux.
+
+## Diagnostico Rapido
+
+Se nao capturar:
+
+1. Confira se o ESP32-S3 aparece em `/dev/ttyACM0` ou `/dev/ttyUSB0`.
+2. Feche qualquer outro programa usando a serial.
+3. Confira se o firmware DAQ foi gravado no ESP32-S3.
+4. Confira se o baud esta em `921600`.
+5. No Raspberry, confira permissao de serial com `groups`; o usuario normalmente deve estar no grupo `dialout`.
+
+Se precisar adicionar o usuario ao grupo serial:
+
+```bash
+sudo usermod -a -G dialout "$USER"
+```
+
+Depois reinicie a sessao do Raspberry.
+
+## Estrutura Atual
+
+```text
+arduino/esp32_s3_sct013_capture/esp32_s3_sct013_capture.ino
+arduino/esp32_s3_sct013_capture/sketch.yaml
+python/daq_gui.py
+python/captura_esp32.py
+python/requirements.txt
+install_raspberry_pi.sh
+run_gui.sh
+run_cli_capture.sh
+README.md
+```
+
+## Proximos Caminhos
+
+- Testar estabilidade real no Raspberry Pi 4.
+- Medir lacunas com `tempo_us` no modo `Continuo Binario`.
+- Reduzir atualizacoes de grafico em capturas longas.
+- Avaliar buffer duplo, ADC continuo/DMA ou ESP-IDF para aquisicao continua real.
+- Avaliar ADC externo ADS131M04.

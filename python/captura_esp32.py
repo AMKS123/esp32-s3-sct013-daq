@@ -8,6 +8,10 @@ from pathlib import Path
 import serial
 
 
+PORTA_PADRAO = "/dev/ttyACM0"
+CSV_PADRAO = Path.home() / "Documents" / "esp32_s3_daq" / "captura_esp32.csv"
+
+
 def abrir_serial(porta: str, baud: int) -> serial.Serial:
     ser = serial.Serial(porta, baud, timeout=2)
     time.sleep(2)
@@ -190,14 +194,14 @@ def analisar(amostras: list[tuple[int, ...]]) -> None:
                 print(f"{frequencias[i]:8.2f} Hz  magnitude {magnitudes[i]:.2f}")
     except ImportError:
         print()
-        print("Instale numpy para calcular FFT: py -m pip install numpy")
+        print("Instale numpy para calcular FFT: python3 -m pip install numpy")
 
 
 def plotar(amostras: list[tuple[int, ...]]) -> None:
     try:
         import matplotlib.pyplot as plt
     except ImportError:
-        print("Instale matplotlib para plotar: py -m pip install matplotlib")
+        print("Instale matplotlib para plotar: python3 -m pip install matplotlib")
         return
 
     tempos_s = [item[1] / 1_000_000 for item in amostras]
@@ -216,7 +220,7 @@ def plotar(amostras: list[tuple[int, ...]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Captura dados do ESP32-S3 via serial.")
-    parser.add_argument("--porta", default="COM10", help="Porta serial. Exemplo: COM10")
+    parser.add_argument("--porta", default=PORTA_PADRAO, help=f"Porta serial. Padrao: {PORTA_PADRAO}")
     parser.add_argument("--baud", type=int, default=921600, help="Baud rate")
     parser.add_argument("--sps", type=int, default=2000, help="Amostras por segundo")
     parser.add_argument("--tempo", type=int, default=5, help="Tempo de captura em segundos")
@@ -226,11 +230,12 @@ def main() -> None:
         default="binario",
         help="Formato de transmissao",
     )
-    parser.add_argument("--csv", default="captura_esp32.csv", help="Arquivo CSV de saida")
+    parser.add_argument("--csv", default=str(CSV_PADRAO), help="Arquivo CSV de saida")
     parser.add_argument("--plot", action="store_true", help="Mostra grafico ao final")
     args = parser.parse_args()
 
-    arquivo_csv = Path(args.csv)
+    arquivo_csv = Path(args.csv).expanduser()
+    arquivo_csv.parent.mkdir(parents=True, exist_ok=True)
 
     if not 100 <= args.sps <= 20000:
         raise SystemExit("Use --sps entre 100 e 20000.")
